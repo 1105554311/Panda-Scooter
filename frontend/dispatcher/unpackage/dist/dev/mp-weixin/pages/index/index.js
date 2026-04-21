@@ -1,8 +1,10 @@
 "use strict";
 const common_vendor = require("../../common/vendor.js");
+const utils_auth = require("../../utils/auth.js");
 const api_modules_user = require("../../api/modules/user.js");
 const api_modules_map = require("../../api/modules/map.js");
 const api_modules_scooter = require("../../api/modules/scooter.js");
+const utils_dispatcherUser = require("../../utils/dispatcherUser.js");
 const common_assets = require("../../common/assets.js");
 const DEFAULT_LOCATION = {
   latitude: 30.75953206821905,
@@ -17,7 +19,7 @@ const _sfc_main = {
   data() {
     return {
       hasToken: false,
-      currentDispatcherName: "访客调度员",
+      currentDispatcherName: "",
       headerSubtitle: "调度控制台",
       currentAreaName: "未分配辖区",
       todayDispatchedNum: "0",
@@ -50,31 +52,36 @@ const _sfc_main = {
       const cached = common_vendor.index.getStorageSync("dispatcherUserInfo") || {};
       this.hasToken = Boolean(common_vendor.index.getStorageSync("dispatcherToken"));
       if (!this.hasToken) {
-        this.currentDispatcherName = "访客调度员";
-        this.headerSubtitle = "调度控制台";
-        this.currentAreaName = "未分配辖区";
-        this.todayDispatchedNum = "0";
+        this.resetDispatcherInfo();
         return;
       }
-      this.applyDispatcherInfo(cached);
       try {
         const res = await api_modules_user.getDispatcherInfo();
         const data = res.data || {};
-        const nextInfo = {
-          ...cached,
-          name: data.name || cached.name || "",
-          email: data.email || cached.email || "",
-          areaName: data.areaName || cached.areaName || "",
-          todayDispatchedNum: String(data.todayDispatchedNum || cached.todayDispatchedNum || "0")
-        };
+        const nextInfo = utils_dispatcherUser.normalizeDispatcherUserInfo(data, cached);
         common_vendor.index.setStorageSync("dispatcherUserInfo", nextInfo);
         this.applyDispatcherInfo(nextInfo);
       } catch (error) {
+        this.hasToken = Boolean(common_vendor.index.getStorageSync("dispatcherToken"));
+        if (utils_auth.isUnauthorizedError(error)) {
+          this.resetDispatcherInfo();
+          common_vendor.index.reLaunch({
+            url: "/pages/login/login?mode=login"
+          });
+          return;
+        }
+        this.applyDispatcherInfo(utils_dispatcherUser.normalizeDispatcherUserInfo(cached));
       }
     },
+    resetDispatcherInfo() {
+      this.currentDispatcherName = "";
+      this.headerSubtitle = "调度控制台";
+      this.currentAreaName = "未分配辖区";
+      this.todayDispatchedNum = "0";
+    },
     applyDispatcherInfo(info = {}) {
-      this.currentDispatcherName = info.name || info.email || "已登录调度员";
-      this.headerSubtitle = this.currentDispatcherName;
+      this.currentDispatcherName = utils_dispatcherUser.getDispatcherDisplayName(info);
+      this.headerSubtitle = this.currentDispatcherName || "调度控制台";
       this.currentAreaName = info.areaName || "未分配辖区";
       this.todayDispatchedNum = String(info.todayDispatchedNum || "0");
     },
@@ -243,7 +250,7 @@ const _sfc_main = {
         const scooters = this.mapScooters(data.scooters || []);
         const parkingPoints = this.mapParkingPoints(data.parkingPoints || []);
         const noParkingAreas = this.mapNoParkingAreas(data.noParkingAreas || []);
-        const areaPolygon = this.mapDispatcherArea(data.area);
+        const areaPolygon = this.mapDispatcherArea(data.area || data.dispatcherArea);
         const noParkingMarkers = this.mapNoParkingAreaMarkers(data.noParkingAreas || [], noParkingAreas);
         this.polygons = [...areaPolygon ? [areaPolygon] : [], ...noParkingAreas];
         this.markers = [
@@ -278,8 +285,8 @@ const _sfc_main = {
           meta: {
             code: item.code || "--",
             battery: item.battery || "0",
-            rideStatus: item.ride_status,
-            faultStatus: item.fault_status
+            rideStatus: item.rideStatus ?? item.ride_status,
+            faultStatus: item.faultStatus ?? item.fault_status
           }
         };
       }).filter(Boolean);

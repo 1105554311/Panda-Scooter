@@ -124,6 +124,7 @@ import {
   dispatcherSignin,
   getVerificationCode
 } from '@/api/index'
+import { normalizeDispatcherUserInfo } from '@/utils/dispatcherUser'
 
 const MODE_META = {
   login: {
@@ -286,14 +287,13 @@ export default {
             password: this.form.password
           })
           const data = res.data || {}
+          const dispatcherUserInfo = normalizeDispatcherUserInfo(data, {
+            email: this.form.email
+          })
           if (data.token) {
             uni.setStorageSync('dispatcherToken', data.token)
           }
-          uni.setStorageSync('dispatcherUserInfo', {
-            id: data.id || '',
-            name: data.name || '调度员',
-            email: data.email || this.form.email
-          })
+          uni.setStorageSync('dispatcherUserInfo', dispatcherUserInfo)
           uni.hideLoading()
           uni.showToast({
             title: '登录成功',

@@ -1,6 +1,7 @@
 "use strict";
 const common_vendor = require("../../common/vendor.js");
 const api_modules_user = require("../../api/modules/user.js");
+const utils_dispatcherUser = require("../../utils/dispatcherUser.js");
 const common_assets = require("../../common/assets.js");
 const MODE_META = {
   login: {
@@ -153,14 +154,13 @@ const _sfc_main = {
             password: this.form.password
           });
           const data = res.data || {};
+          const dispatcherUserInfo = utils_dispatcherUser.normalizeDispatcherUserInfo(data, {
+            email: this.form.email
+          });
           if (data.token) {
             common_vendor.index.setStorageSync("dispatcherToken", data.token);
           }
-          common_vendor.index.setStorageSync("dispatcherUserInfo", {
-            id: data.id || "",
-            name: data.name || "调度员",
-            email: data.email || this.form.email
-          });
+          common_vendor.index.setStorageSync("dispatcherUserInfo", dispatcherUserInfo);
           common_vendor.index.hideLoading();
           common_vendor.index.showToast({
             title: "登录成功",

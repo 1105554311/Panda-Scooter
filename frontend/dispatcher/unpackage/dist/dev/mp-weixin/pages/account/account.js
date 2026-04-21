@@ -1,19 +1,16 @@
 "use strict";
 const common_vendor = require("../../common/vendor.js");
+const utils_auth = require("../../utils/auth.js");
 const api_modules_user = require("../../api/modules/user.js");
+const utils_dispatcherUser = require("../../utils/dispatcherUser.js");
 const DEFAULT_USER_INFO = {
-  name: "访客调度员",
-  email: "未登录"
+  name: "",
+  email: ""
 };
 const DEFAULT_DELETE_FORM = () => ({
   password: "",
   verificationCode: ""
 });
-const clearDispatcherSession = () => {
-  common_vendor.index.removeStorageSync("dispatcherToken");
-  common_vendor.index.removeStorageSync("dispatcherUserInfo");
-  common_vendor.index.removeStorageSync("dispatcherCurrentTask");
-};
 const _sfc_main = {
   data() {
     return {
@@ -40,18 +37,26 @@ const _sfc_main = {
   },
   methods: {
     async loadUserInfo() {
+      const cached = common_vendor.index.getStorageSync("dispatcherUserInfo") || {};
       try {
         const res = await api_modules_user.getDispatcherInfo();
         const data = res.data || {};
         this.userInfo = {
-          name: data.name || DEFAULT_USER_INFO.name,
-          email: data.email || DEFAULT_USER_INFO.email
+          ...DEFAULT_USER_INFO,
+          ...utils_dispatcherUser.normalizeDispatcherUserInfo(data, cached)
         };
+        common_vendor.index.setStorageSync("dispatcherUserInfo", this.userInfo);
       } catch (error) {
-        const cached = common_vendor.index.getStorageSync("dispatcherUserInfo") || {};
+        this.userInfo = { ...DEFAULT_USER_INFO };
+        if (utils_auth.isUnauthorizedError(error)) {
+          common_vendor.index.redirectTo({
+            url: "/pages/login/login?mode=login"
+          });
+          return;
+        }
         this.userInfo = {
           ...DEFAULT_USER_INFO,
-          ...cached
+          ...utils_dispatcherUser.normalizeDispatcherUserInfo(cached)
         };
       }
     },
@@ -62,7 +67,7 @@ const _sfc_main = {
       });
     },
     async sendDeleteCode() {
-      if (!this.userInfo.email || this.userInfo.email === DEFAULT_USER_INFO.email) {
+      if (!this.userInfo.email) {
         common_vendor.index.showToast({
           title: "当前账号暂无可用邮箱",
           icon: "none"
@@ -115,7 +120,7 @@ const _sfc_main = {
             await api_modules_user.dispatcherLogout();
           } catch (error) {
           }
-          clearDispatcherSession();
+          utils_auth.clearDispatcherSession();
           common_vendor.index.showToast({
             title: "已退出登录",
             icon: "success"
@@ -157,7 +162,7 @@ const _sfc_main = {
               verificationCode: this.deleteForm.verificationCode
             });
             common_vendor.index.hideLoading();
-            clearDispatcherSession();
+            utils_auth.clearDispatcherSession();
             common_vendor.index.showToast({
               title: "账号已注销",
               icon: "success"
@@ -179,24 +184,24 @@ const _sfc_main = {
 };
 function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
   return {
-    a: common_vendor.t($data.userInfo.name),
-    b: common_vendor.t($data.userInfo.email),
-    c: common_vendor.o((...args) => $options.navigateToResetPassword && $options.navigateToResetPassword(...args), "c5"),
-    d: common_vendor.o((...args) => $options.logout && $options.logout(...args), "0a"),
+    a: common_vendor.t($data.userInfo.name || "--"),
+    b: common_vendor.t($data.userInfo.email || "未登录"),
+    c: common_vendor.o((...args) => $options.navigateToResetPassword && $options.navigateToResetPassword(...args), "0c"),
+    d: common_vendor.o((...args) => $options.logout && $options.logout(...args), "4d"),
     e: $data.deleteForm.password,
     f: common_vendor.o(common_vendor.m(($event) => $data.deleteForm.password = $event.detail.value, {
       trim: true
-    }), "7f"),
+    }), "84"),
     g: $data.deleteForm.verificationCode,
     h: common_vendor.o(common_vendor.m(($event) => $data.deleteForm.verificationCode = $event.detail.value, {
       trim: true
-    }), "bb"),
+    }), "44"),
     i: common_vendor.t($data.isSendingDeleteCode ? "发送中..." : $data.countdown > 0 ? `${$data.countdown}s` : "获取验证码"),
     j: $data.countdown > 0 || $data.isSendingDeleteCode,
-    k: common_vendor.o((...args) => $options.sendDeleteCode && $options.sendDeleteCode(...args), "52"),
+    k: common_vendor.o((...args) => $options.sendDeleteCode && $options.sendDeleteCode(...args), "c8"),
     l: common_vendor.t($data.isDeleting ? "注销中..." : "确认注销"),
     m: $data.isDeleting,
-    n: common_vendor.o((...args) => $options.deleteAccount && $options.deleteAccount(...args), "06")
+    n: common_vendor.o((...args) => $options.deleteAccount && $options.deleteAccount(...args), "40")
   };
 }
 const MiniProgramPage = /* @__PURE__ */ common_vendor._export_sfc(_sfc_main, [["render", _sfc_render]]);

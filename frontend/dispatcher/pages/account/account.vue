@@ -7,11 +7,11 @@
     <view class="info-section">
       <view class="info-item">
         <text class="info-label">姓名</text>
-        <text class="info-value">{{ userInfo.name }}</text>
+        <text class="info-value">{{ userInfo.name || '--' }}</text>
       </view>
       <view class="info-item">
         <text class="info-label">邮箱</text>
-        <text class="info-value">{{ userInfo.email }}</text>
+        <text class="info-value">{{ userInfo.email || '未登录' }}</text>
       </view>
     </view>
 
@@ -68,22 +68,18 @@ import {
   getDispatcherInfo,
   getVerificationCode
 } from '@/api/index'
+import { clearDispatcherSession, isUnauthorizedError } from '@/utils/auth'
+import { normalizeDispatcherUserInfo } from '@/utils/dispatcherUser'
 
 const DEFAULT_USER_INFO = {
-  name: '访客调度员',
-  email: '未登录'
+  name: '',
+  email: ''
 }
 
 const DEFAULT_DELETE_FORM = () => ({
   password: '',
   verificationCode: ''
 })
-
-const clearDispatcherSession = () => {
-  uni.removeStorageSync('dispatcherToken')
-  uni.removeStorageSync('dispatcherUserInfo')
-  uni.removeStorageSync('dispatcherCurrentTask')
-}
 
 export default {
   data() {
@@ -111,18 +107,28 @@ export default {
   },
   methods: {
     async loadUserInfo() {
+      const cached = uni.getStorageSync('dispatcherUserInfo') || {}
       try {
         const res = await getDispatcherInfo()
         const data = res.data || {}
         this.userInfo = {
-          name: data.name || DEFAULT_USER_INFO.name,
-          email: data.email || DEFAULT_USER_INFO.email
+          ...DEFAULT_USER_INFO,
+          ...normalizeDispatcherUserInfo(data, cached)
         }
+        uni.setStorageSync('dispatcherUserInfo', this.userInfo)
       } catch (error) {
-        const cached = uni.getStorageSync('dispatcherUserInfo') || {}
+        this.userInfo = { ...DEFAULT_USER_INFO }
+
+        if (isUnauthorizedError(error)) {
+          uni.redirectTo({
+            url: '/pages/login/login?mode=login'
+          })
+          return
+        }
+
         this.userInfo = {
           ...DEFAULT_USER_INFO,
-          ...cached
+          ...normalizeDispatcherUserInfo(cached)
         }
       }
     },
@@ -133,7 +139,7 @@ export default {
       })
     },
     async sendDeleteCode() {
-      if (!this.userInfo.email || this.userInfo.email === DEFAULT_USER_INFO.email) {
+      if (!this.userInfo.email) {
         uni.showToast({
           title: '当前账号暂无可用邮箱',
           icon: 'none'

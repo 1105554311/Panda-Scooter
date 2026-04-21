@@ -1,11 +1,13 @@
 "use strict";
 const common_vendor = require("../../common/vendor.js");
+const utils_auth = require("../../utils/auth.js");
 const api_modules_user = require("../../api/modules/user.js");
+const utils_dispatcherUser = require("../../utils/dispatcherUser.js");
 const common_assets = require("../../common/assets.js");
 const DEFAULT_USER_INFO = {
-  name: "访客调度员",
+  name: "",
   email: "未登录",
-  areaName: "未分配辖区",
+  areaName: "--",
   todayDispatchedNum: "0"
 };
 const _sfc_main = {
@@ -25,21 +27,24 @@ const _sfc_main = {
         this.userInfo = { ...DEFAULT_USER_INFO };
         return;
       }
+      const cached = common_vendor.index.getStorageSync("dispatcherUserInfo") || {};
       try {
         const res = await api_modules_user.getDispatcherInfo();
         const data = res.data || {};
         this.userInfo = {
-          name: data.name || DEFAULT_USER_INFO.name,
-          email: data.email || DEFAULT_USER_INFO.email,
-          areaName: data.areaName || DEFAULT_USER_INFO.areaName,
-          todayDispatchedNum: String(data.todayDispatchedNum || "0")
+          ...DEFAULT_USER_INFO,
+          ...utils_dispatcherUser.normalizeDispatcherUserInfo(data, cached)
         };
         common_vendor.index.setStorageSync("dispatcherUserInfo", this.userInfo);
       } catch (error) {
-        const cached = common_vendor.index.getStorageSync("dispatcherUserInfo") || {};
+        this.hasToken = Boolean(common_vendor.index.getStorageSync("dispatcherToken"));
+        this.userInfo = { ...DEFAULT_USER_INFO };
+        if (utils_auth.isUnauthorizedError(error)) {
+          return;
+        }
         this.userInfo = {
           ...DEFAULT_USER_INFO,
-          ...cached
+          ...utils_dispatcherUser.normalizeDispatcherUserInfo(cached)
         };
       }
     },
@@ -81,18 +86,18 @@ const _sfc_main = {
 function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
   return common_vendor.e({
     a: common_assets._imports_0$1,
-    b: common_vendor.t($data.userInfo.name),
+    b: common_vendor.t($data.userInfo.name || "未登录"),
     c: common_vendor.t($data.userInfo.email),
-    d: common_vendor.o((...args) => $options.openAccount && $options.openAccount(...args), "e8"),
+    d: common_vendor.o((...args) => $options.openAccount && $options.openAccount(...args), "e5"),
     e: common_vendor.t($data.userInfo.areaName),
     f: common_vendor.t($data.userInfo.todayDispatchedNum),
     g: !$data.hasToken
   }, !$data.hasToken ? {
-    h: common_vendor.o(($event) => $options.goLogin("login"), "ac")
+    h: common_vendor.o(($event) => $options.goLogin("login"), "f4")
   } : {}, {
-    i: common_vendor.o(($event) => $options.showComingSoon("我的收入"), "1d"),
-    j: common_vendor.o(($event) => $options.showComingSoon("调度任务"), "eb"),
-    k: common_vendor.o(($event) => $options.navigateTo("history"), "84")
+    i: common_vendor.o(($event) => $options.showComingSoon("我的收入"), "c4"),
+    j: common_vendor.o(($event) => $options.showComingSoon("调度任务"), "8c"),
+    k: common_vendor.o(($event) => $options.navigateTo("history"), "d1")
   });
 }
 const MiniProgramPage = /* @__PURE__ */ common_vendor._export_sfc(_sfc_main, [["render", _sfc_render]]);

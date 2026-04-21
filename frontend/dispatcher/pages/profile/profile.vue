@@ -3,7 +3,7 @@
     <view class="header">
       <image class="avatar" src="/static/avatar.png" mode="aspectFit"></image>
       <view class="user-info">
-        <text class="username">{{ userInfo.name }}</text>
+        <text class="username">{{ userInfo.name || '未登录' }}</text>
         <text class="email">{{ userInfo.email }}</text>
       </view>
       <view class="account-manage" @click="openAccount">
@@ -45,11 +45,13 @@
 
 <script>
 import { getDispatcherInfo } from '@/api/index'
+import { isUnauthorizedError } from '@/utils/auth'
+import { normalizeDispatcherUserInfo } from '@/utils/dispatcherUser'
 
 const DEFAULT_USER_INFO = {
-  name: '访客调度员',
+  name: '',
   email: '未登录',
-  areaName: '未分配辖区',
+  areaName: '--',
   todayDispatchedNum: '0'
 }
 
@@ -71,21 +73,26 @@ export default {
         return
       }
 
+      const cached = uni.getStorageSync('dispatcherUserInfo') || {}
       try {
         const res = await getDispatcherInfo()
         const data = res.data || {}
         this.userInfo = {
-          name: data.name || DEFAULT_USER_INFO.name,
-          email: data.email || DEFAULT_USER_INFO.email,
-          areaName: data.areaName || DEFAULT_USER_INFO.areaName,
-          todayDispatchedNum: String(data.todayDispatchedNum || '0')
+          ...DEFAULT_USER_INFO,
+          ...normalizeDispatcherUserInfo(data, cached)
         }
         uni.setStorageSync('dispatcherUserInfo', this.userInfo)
       } catch (error) {
-        const cached = uni.getStorageSync('dispatcherUserInfo') || {}
+        this.hasToken = Boolean(uni.getStorageSync('dispatcherToken'))
+        this.userInfo = { ...DEFAULT_USER_INFO }
+
+        if (isUnauthorizedError(error)) {
+          return
+        }
+
         this.userInfo = {
           ...DEFAULT_USER_INFO,
-          ...cached
+          ...normalizeDispatcherUserInfo(cached)
         }
       }
     },

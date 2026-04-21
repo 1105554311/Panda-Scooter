@@ -75,6 +75,11 @@
 
 <script>
 import { getDispatcherInfo, getMapData, unlockScooter } from '@/api/index'
+import { isUnauthorizedError } from '@/utils/auth'
+import {
+  getDispatcherDisplayName,
+  normalizeDispatcherUserInfo
+} from '@/utils/dispatcherUser'
 
 const DEFAULT_LOCATION = {
   latitude: 30.75953206821905,
@@ -91,7 +96,7 @@ export default {
   data() {
     return {
       hasToken: false,
-      currentDispatcherName: '访客调度员',
+      currentDispatcherName: '',
       headerSubtitle: '调度控制台',
       currentAreaName: '未分配辖区',
       todayDispatchedNum: '0',
@@ -125,33 +130,39 @@ export default {
       this.hasToken = Boolean(uni.getStorageSync('dispatcherToken'))
 
       if (!this.hasToken) {
-        this.currentDispatcherName = '访客调度员'
-        this.headerSubtitle = '调度控制台'
-        this.currentAreaName = '未分配辖区'
-        this.todayDispatchedNum = '0'
+        this.resetDispatcherInfo()
         return
       }
-
-      this.applyDispatcherInfo(cached)
 
       try {
         const res = await getDispatcherInfo()
         const data = res.data || {}
-        const nextInfo = {
-          ...cached,
-          name: data.name || cached.name || '',
-          email: data.email || cached.email || '',
-          areaName: data.areaName || cached.areaName || '',
-          todayDispatchedNum: String(data.todayDispatchedNum || cached.todayDispatchedNum || '0')
-        }
+        const nextInfo = normalizeDispatcherUserInfo(data, cached)
         uni.setStorageSync('dispatcherUserInfo', nextInfo)
         this.applyDispatcherInfo(nextInfo)
       } catch (error) {
+        this.hasToken = Boolean(uni.getStorageSync('dispatcherToken'))
+
+        if (isUnauthorizedError(error)) {
+          this.resetDispatcherInfo()
+          uni.reLaunch({
+            url: '/pages/login/login?mode=login'
+          })
+          return
+        }
+
+        this.applyDispatcherInfo(normalizeDispatcherUserInfo(cached))
       }
     },
+    resetDispatcherInfo() {
+      this.currentDispatcherName = ''
+      this.headerSubtitle = '调度控制台'
+      this.currentAreaName = '未分配辖区'
+      this.todayDispatchedNum = '0'
+    },
     applyDispatcherInfo(info = {}) {
-      this.currentDispatcherName = info.name || info.email || '已登录调度员'
-      this.headerSubtitle = this.currentDispatcherName
+      this.currentDispatcherName = getDispatcherDisplayName(info)
+      this.headerSubtitle = this.currentDispatcherName || '调度控制台'
       this.currentAreaName = info.areaName || '未分配辖区'
       this.todayDispatchedNum = String(info.todayDispatchedNum || '0')
     },
@@ -330,7 +341,7 @@ export default {
         const scooters = this.mapScooters(data.scooters || [])
         const parkingPoints = this.mapParkingPoints(data.parkingPoints || [])
         const noParkingAreas = this.mapNoParkingAreas(data.noParkingAreas || [])
-        const areaPolygon = this.mapDispatcherArea(data.area)
+        const areaPolygon = this.mapDispatcherArea(data.area || data.dispatcherArea)
         const noParkingMarkers = this.mapNoParkingAreaMarkers(data.noParkingAreas || [], noParkingAreas)
 
         this.polygons = [...(areaPolygon ? [areaPolygon] : []), ...noParkingAreas]
@@ -368,8 +379,8 @@ export default {
             meta: {
               code: item.code || '--',
               battery: item.battery || '0',
-              rideStatus: item.ride_status,
-              faultStatus: item.fault_status
+              rideStatus: item.rideStatus ?? item.ride_status,
+              faultStatus: item.faultStatus ?? item.fault_status
             }
           }
         })

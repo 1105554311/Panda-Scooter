@@ -1,6 +1,7 @@
 "use strict";
 const common_vendor = require("../common/vendor.js");
 const api_env = require("./env.js");
+const utils_auth = require("../utils/auth.js");
 const isAbsoluteUrl = (url) => /^https?:\/\//.test(url);
 const isSuccessCode = (code) => ["0", "200"].includes(String(code));
 const serializeParams = (params = {}) => {
@@ -34,10 +35,17 @@ const showRequestError = (message) => {
     });
   }, 50);
 };
+const isUnauthorizedResponse = (message, statusCode) => {
+  return statusCode === 401 || statusCode === 403 || utils_auth.isAuthErrorMessage(message);
+};
 const rejectWithMessage = (reject, message, extra = {}) => {
+  const unauthorized = isUnauthorizedResponse(message, extra.statusCode);
+  if (unauthorized) {
+    utils_auth.clearDispatcherSession();
+  }
   showRequestError(message);
   const error = new Error(message);
-  Object.assign(error, { handled: true }, extra);
+  Object.assign(error, { handled: true, unauthorized }, extra);
   reject(error);
 };
 const request = (options = {}) => {

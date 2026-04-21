@@ -6159,7 +6159,7 @@ function populateParameters(fromRes, toRes) {
   const hostLanguage = (language || "").replace(/_/g, "-");
   const parameters = {
     appId: "wxb0ca900326caa93d",
-    appName: "dispatcher",
+    appName: "熊猫调度",
     appVersion: "1.0.0",
     appVersionCode: "100",
     appLanguage: getAppLanguage(hostLanguage),
@@ -6303,7 +6303,7 @@ const getAppBaseInfo = {
     let hostLanguage = (language || "").replace(/_/g, "-");
     const parameters = {
       appId: "wxb0ca900326caa93d",
-      appName: "dispatcher",
+      appName: "熊猫调度",
       appVersion: "1.0.0",
       appVersionCode: "100",
       appLanguage: getAppLanguage(hostLanguage),
@@ -7101,9 +7101,9 @@ function isConsoleWritable() {
   return isWritable;
 }
 function initRuntimeSocketService() {
-  const hosts = "100.71.138.30,192.168.43.4,127.0.0.1";
+  const hosts = "100.71.138.30,10.69.251.100,10.169.0.52,127.0.0.1";
   const port = "8090";
-  const id = "mp-weixin_pPInzl";
+  const id = "mp-weixin_Uv7vNL";
   const lazy = typeof swan !== "undefined";
   let restoreError = lazy ? () => {
   } : initOnError();

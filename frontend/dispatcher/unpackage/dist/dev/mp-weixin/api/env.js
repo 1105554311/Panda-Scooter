@@ -11,7 +11,7 @@ const API_ENVS = Object.freeze({
   test: {
     key: "test",
     label: "前后端联调测试环境",
-    baseURL: "http://8.137.181.89:8080/user"
+    baseURL: "http://8.137.181.89:8080/dispatcher"
   },
   prod: {
     key: "prod",

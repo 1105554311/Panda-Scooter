@@ -107,6 +107,8 @@ const _sfc_main = {
         this.scooterInfo = {
           ...DEFAULT_SCOOTER_INFO,
           ...data,
+          ride_status: data.ride_status ?? data.rideStatus ?? DEFAULT_SCOOTER_INFO.ride_status,
+          fault_status: data.fault_status ?? data.faultStatus ?? DEFAULT_SCOOTER_INFO.fault_status,
           code: data.code || this.currentCode
         };
         this.syncMapCenter();
@@ -164,7 +166,7 @@ const _sfc_main = {
         const scooters = this.mapScooters(data.scooters || []);
         const parkingPoints = this.mapParkingPoints(data.parkingPoints || []);
         const noParkingAreas = this.mapNoParkingAreas(data.noParkingAreas || []);
-        const areaPolygon = this.mapDispatcherArea(data.area);
+        const areaPolygon = this.mapDispatcherArea(data.area || data.dispatcherArea);
         const noParkingMarkers = this.mapNoParkingAreaMarkers(data.noParkingAreas || [], noParkingAreas);
         this.polygons = [...areaPolygon ? [areaPolygon] : [], ...noParkingAreas];
         this.markers = [
@@ -208,8 +210,8 @@ const _sfc_main = {
           meta: {
             code: item.code || "--",
             battery: item.battery || "0",
-            rideStatus: item.ride_status,
-            faultStatus: item.fault_status
+            rideStatus: item.rideStatus ?? item.ride_status,
+            faultStatus: item.faultStatus ?? item.fault_status
           }
         };
       }).filter(Boolean);
