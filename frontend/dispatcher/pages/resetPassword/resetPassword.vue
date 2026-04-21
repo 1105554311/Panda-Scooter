@@ -2,29 +2,29 @@
   <view class="page">
     <view class="hero">
       <image class="logo" src="/static/logo.png" mode="aspectFit"></image>
-      <text class="title">Reset Password</text>
-      <text class="subtitle">Verify your email and set a new dispatcher password</text>
+      <text class="title">重置密码</text>
+      <text class="subtitle">验证邮箱并设置新的调度员密码</text>
     </view>
 
     <view class="card">
       <view class="field">
-        <text class="label">Email</text>
+        <text class="label">邮箱</text>
         <input
           v-model.trim="form.email"
           class="input"
           type="text"
-          placeholder="Enter your email"
+          placeholder="请输入邮箱"
         />
       </view>
 
       <view class="field">
-        <text class="label">Verification Code</text>
+        <text class="label">验证码</text>
         <view class="inline-field">
           <input
             v-model.trim="form.verificationCode"
             class="input inline-input"
             type="text"
-            placeholder="Enter the code"
+            placeholder="请输入验证码"
           />
           <button
             class="code-btn"
@@ -34,19 +34,19 @@
             :disabled="countdown > 0 || isSendingCode"
             @click="sendCode"
           >
-            {{ isSendingCode ? 'Sending...' : (countdown > 0 ? `${countdown}s` : 'Get Code') }}
+            {{ isSendingCode ? '发送中...' : (countdown > 0 ? `${countdown}s` : '获取验证码') }}
           </button>
         </view>
       </view>
 
       <view class="field">
-        <text class="label">New Password</text>
+        <text class="label">新密码</text>
         <input
           v-model.trim="form.newPassword"
           class="input"
           password
           type="text"
-          placeholder="Enter a new password"
+          placeholder="请输入新密码"
         />
       </view>
 
@@ -58,7 +58,7 @@
         :disabled="isSubmitting"
         @click="submit"
       >
-        {{ isSubmitting ? 'Submitting...' : 'Reset Password' }}
+        {{ isSubmitting ? '提交中...' : '重置密码' }}
       </button>
 
       <view class="footer-links">
@@ -68,7 +68,7 @@
           hover-stay-time="70"
           @click="goLogin"
         >
-          <text class="link">Back To Login</text>
+          <text class="link">返回登录</text>
         </view>
       </view>
     </view>
@@ -126,7 +126,7 @@ export default {
     async sendCode() {
       if (!this.form.email) {
         uni.showToast({
-          title: 'Enter email first',
+          title: '请先输入邮箱',
           icon: 'none'
         })
         return
@@ -140,7 +140,7 @@ export default {
       try {
         await getVerificationCode(this.form.email)
         uni.showToast({
-          title: 'Code sent',
+          title: '验证码已发送',
           icon: 'success'
         })
         this.startCountdown()
@@ -170,7 +170,7 @@ export default {
     async submit() {
       if (!this.form.email) {
         uni.showToast({
-          title: 'Enter email',
+          title: '请输入邮箱',
           icon: 'none'
         })
         return
@@ -178,7 +178,7 @@ export default {
 
       if (!this.form.verificationCode || !this.form.newPassword) {
         uni.showToast({
-          title: 'Complete all fields',
+          title: '请填写完整信息',
           icon: 'none'
         })
         return
@@ -192,7 +192,7 @@ export default {
 
       try {
         uni.showLoading({
-          title: 'Submitting...'
+          title: '提交中...'
         })
         await dispatcherPassword({
           verificationCode: this.form.verificationCode,
@@ -201,7 +201,7 @@ export default {
         uni.hideLoading()
         clearDispatcherSession()
         uni.showToast({
-          title: 'Password reset',
+          title: '密码重置成功',
           icon: 'success'
         })
         setTimeout(() => {

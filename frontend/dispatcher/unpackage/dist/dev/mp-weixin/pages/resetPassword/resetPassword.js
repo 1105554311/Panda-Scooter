@@ -47,7 +47,7 @@ const _sfc_main = {
     async sendCode() {
       if (!this.form.email) {
         common_vendor.index.showToast({
-          title: "Enter email first",
+          title: "请先输入邮箱",
           icon: "none"
         });
         return;
@@ -59,7 +59,7 @@ const _sfc_main = {
       try {
         await api_modules_user.getVerificationCode(this.form.email);
         common_vendor.index.showToast({
-          title: "Code sent",
+          title: "验证码已发送",
           icon: "success"
         });
         this.startCountdown();
@@ -89,14 +89,14 @@ const _sfc_main = {
     async submit() {
       if (!this.form.email) {
         common_vendor.index.showToast({
-          title: "Enter email",
+          title: "请输入邮箱",
           icon: "none"
         });
         return;
       }
       if (!this.form.verificationCode || !this.form.newPassword) {
         common_vendor.index.showToast({
-          title: "Complete all fields",
+          title: "请填写完整信息",
           icon: "none"
         });
         return;
@@ -107,7 +107,7 @@ const _sfc_main = {
       this.isSubmitting = true;
       try {
         common_vendor.index.showLoading({
-          title: "Submitting..."
+          title: "提交中..."
         });
         await api_modules_user.dispatcherPassword({
           verificationCode: this.form.verificationCode,
@@ -116,7 +116,7 @@ const _sfc_main = {
         common_vendor.index.hideLoading();
         clearDispatcherSession();
         common_vendor.index.showToast({
-          title: "Password reset",
+          title: "密码重置成功",
           icon: "success"
         });
         setTimeout(() => {
@@ -136,22 +136,22 @@ function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
     b: $data.form.email,
     c: common_vendor.o(common_vendor.m(($event) => $data.form.email = $event.detail.value, {
       trim: true
-    }), "f1"),
+    }), "a8"),
     d: $data.form.verificationCode,
     e: common_vendor.o(common_vendor.m(($event) => $data.form.verificationCode = $event.detail.value, {
       trim: true
-    }), "2c"),
-    f: common_vendor.t($data.isSendingCode ? "Sending..." : $data.countdown > 0 ? `${$data.countdown}s` : "Get Code"),
+    }), "f3"),
+    f: common_vendor.t($data.isSendingCode ? "发送中..." : $data.countdown > 0 ? `${$data.countdown}s` : "获取验证码"),
     g: $data.countdown > 0 || $data.isSendingCode,
-    h: common_vendor.o((...args) => $options.sendCode && $options.sendCode(...args), "d0"),
+    h: common_vendor.o((...args) => $options.sendCode && $options.sendCode(...args), "f6"),
     i: $data.form.newPassword,
     j: common_vendor.o(common_vendor.m(($event) => $data.form.newPassword = $event.detail.value, {
       trim: true
-    }), "d1"),
-    k: common_vendor.t($data.isSubmitting ? "Submitting..." : "Reset Password"),
+    }), "38"),
+    k: common_vendor.t($data.isSubmitting ? "提交中..." : "重置密码"),
     l: $data.isSubmitting,
-    m: common_vendor.o((...args) => $options.submit && $options.submit(...args), "3b"),
-    n: common_vendor.o((...args) => $options.goLogin && $options.goLogin(...args), "b2")
+    m: common_vendor.o((...args) => $options.submit && $options.submit(...args), "45"),
+    n: common_vendor.o((...args) => $options.goLogin && $options.goLogin(...args), "80")
   };
 }
 const MiniProgramPage = /* @__PURE__ */ common_vendor._export_sfc(_sfc_main, [["render", _sfc_render]]);

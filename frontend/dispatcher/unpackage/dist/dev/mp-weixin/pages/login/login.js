@@ -4,14 +4,14 @@ const api_modules_user = require("../../api/modules/user.js");
 const common_assets = require("../../common/assets.js");
 const MODE_META = {
   login: {
-    title: "Dispatcher Login",
-    subtitle: "Sign in to manage scooter dispatch tasks",
-    submitText: "Sign In"
+    title: "调度员登录",
+    subtitle: "登录后可管理车辆调度任务",
+    submitText: "登录"
   },
   signup: {
-    title: "Create Dispatcher Account",
-    subtitle: "Register a new dispatcher account with email verification",
-    submitText: "Register"
+    title: "注册调度员账号",
+    subtitle: "使用邮箱验证码完成调度员注册",
+    submitText: "注册"
   }
 };
 const DEFAULT_FORM = () => ({
@@ -30,8 +30,8 @@ const _sfc_main = {
       isSendingCode: false,
       isSubmitting: false,
       tabs: [
-        { mode: "login", label: "Login" },
-        { mode: "signup", label: "Sign Up" }
+        { mode: "login", label: "登录" },
+        { mode: "signup", label: "注册" }
       ]
     };
   },
@@ -78,7 +78,7 @@ const _sfc_main = {
     async sendCode() {
       if (!this.form.email) {
         common_vendor.index.showToast({
-          title: "Enter email first",
+          title: "请先输入邮箱",
           icon: "none"
         });
         return;
@@ -90,7 +90,7 @@ const _sfc_main = {
       try {
         await api_modules_user.getVerificationCode(this.form.email);
         common_vendor.index.showToast({
-          title: "Code sent",
+          title: "验证码已发送",
           icon: "success"
         });
         this.startCountdown();
@@ -120,21 +120,21 @@ const _sfc_main = {
     async submit() {
       if (!this.form.email) {
         common_vendor.index.showToast({
-          title: "Enter email",
+          title: "请输入邮箱",
           icon: "none"
         });
         return;
       }
       if (!this.form.password) {
         common_vendor.index.showToast({
-          title: "Enter password",
+          title: "请输入密码",
           icon: "none"
         });
         return;
       }
       if (this.mode === "signup" && (!this.form.name || !this.form.verificationCode)) {
         common_vendor.index.showToast({
-          title: "Complete all fields",
+          title: "请填写完整信息",
           icon: "none"
         });
         return;
@@ -145,7 +145,7 @@ const _sfc_main = {
       this.isSubmitting = true;
       try {
         common_vendor.index.showLoading({
-          title: "Submitting..."
+          title: "提交中..."
         });
         if (this.mode === "login") {
           const res = await api_modules_user.dispatcherLogin({
@@ -158,12 +158,12 @@ const _sfc_main = {
           }
           common_vendor.index.setStorageSync("dispatcherUserInfo", {
             id: data.id || "",
-            name: data.name || "Dispatcher",
+            name: data.name || "调度员",
             email: data.email || this.form.email
           });
           common_vendor.index.hideLoading();
           common_vendor.index.showToast({
-            title: "Login success",
+            title: "登录成功",
             icon: "success"
           });
           setTimeout(() => {
@@ -182,7 +182,7 @@ const _sfc_main = {
         });
         common_vendor.index.hideLoading();
         common_vendor.index.showToast({
-          title: "Registered",
+          title: "注册成功",
           icon: "success"
         });
         this.switchMode("login");
@@ -213,40 +213,40 @@ function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
     f: $data.form.name,
     g: common_vendor.o(common_vendor.m(($event) => $data.form.name = $event.detail.value, {
       trim: true
-    }), "79")
+    }), "85")
   } : {}, {
     h: $data.form.email,
     i: common_vendor.o(common_vendor.m(($event) => $data.form.email = $event.detail.value, {
       trim: true
-    }), "82"),
+    }), "e7"),
     j: $data.form.password,
     k: common_vendor.o(common_vendor.m(($event) => $data.form.password = $event.detail.value, {
       trim: true
-    }), "60"),
+    }), "cf"),
     l: $data.mode === "signup"
   }, $data.mode === "signup" ? {
     m: $data.form.verificationCode,
     n: common_vendor.o(common_vendor.m(($event) => $data.form.verificationCode = $event.detail.value, {
       trim: true
-    }), "f1"),
-    o: common_vendor.t($data.isSendingCode ? "Sending..." : $data.countdown > 0 ? `${$data.countdown}s` : "Get Code"),
+    }), "2f"),
+    o: common_vendor.t($data.isSendingCode ? "发送中..." : $data.countdown > 0 ? `${$data.countdown}s` : "获取验证码"),
     p: $data.countdown > 0 || $data.isSendingCode,
-    q: common_vendor.o((...args) => $options.sendCode && $options.sendCode(...args), "90")
+    q: common_vendor.o((...args) => $options.sendCode && $options.sendCode(...args), "0b")
   } : {}, {
-    r: common_vendor.t($data.isSubmitting ? "Submitting..." : $options.submitText),
+    r: common_vendor.t($data.isSubmitting ? "提交中..." : $options.submitText),
     s: $data.isSubmitting,
-    t: common_vendor.o((...args) => $options.submit && $options.submit(...args), "85"),
+    t: common_vendor.o((...args) => $options.submit && $options.submit(...args), "36"),
     v: $data.mode === "login"
   }, $data.mode === "login" ? {
-    w: common_vendor.o(($event) => $options.switchMode("signup"), "30")
+    w: common_vendor.o(($event) => $options.switchMode("signup"), "37")
   } : {}, {
     x: $data.mode === "login"
   }, $data.mode === "login" ? {
-    y: common_vendor.o((...args) => $options.goResetPassword && $options.goResetPassword(...args), "f0")
+    y: common_vendor.o((...args) => $options.goResetPassword && $options.goResetPassword(...args), "bf")
   } : {}, {
     z: $data.mode !== "login"
   }, $data.mode !== "login" ? {
-    A: common_vendor.o(($event) => $options.switchMode("login"), "f5")
+    A: common_vendor.o(($event) => $options.switchMode("login"), "89")
   } : {});
 }
 const MiniProgramPage = /* @__PURE__ */ common_vendor._export_sfc(_sfc_main, [["render", _sfc_render]]);

@@ -1,7 +1,7 @@
 "use strict";
 const common_vendor = require("../common/vendor.js");
 const API_ENV_STORAGE_KEY = "dispatcherApiEnv";
-const DEFAULT_API_ENV = "mock";
+const DEFAULT_API_ENV = "test";
 const API_ENVS = Object.freeze({
   mock: {
     key: "mock",
@@ -11,7 +11,7 @@ const API_ENVS = Object.freeze({
   test: {
     key: "test",
     label: "前后端联调测试环境",
-    baseURL: ""
+    baseURL: "http://8.137.181.89:8080/user"
   },
   prod: {
     key: "prod",

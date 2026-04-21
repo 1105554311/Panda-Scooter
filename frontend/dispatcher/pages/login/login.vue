@@ -22,44 +22,44 @@
       </view>
 
       <view v-if="mode === 'signup'" class="field">
-        <text class="label">Name</text>
+        <text class="label">姓名</text>
         <input
           v-model.trim="form.name"
           class="input"
           type="text"
-          placeholder="Enter your real name"
+          placeholder="请输入真实姓名"
         />
       </view>
 
       <view class="field">
-        <text class="label">Email</text>
+        <text class="label">邮箱</text>
         <input
           v-model.trim="form.email"
           class="input"
           type="text"
-          placeholder="Enter your email"
+          placeholder="请输入邮箱"
         />
       </view>
 
       <view class="field">
-        <text class="label">Password</text>
+        <text class="label">密码</text>
         <input
           v-model.trim="form.password"
           class="input"
           password
           type="text"
-          placeholder="Enter your password"
+          placeholder="请输入密码"
         />
       </view>
 
       <view v-if="mode === 'signup'" class="field">
-        <text class="label">Verification Code</text>
+        <text class="label">验证码</text>
         <view class="inline-field">
           <input
             v-model.trim="form.verificationCode"
             class="input inline-input"
             type="text"
-            placeholder="Enter the code"
+            placeholder="请输入验证码"
           />
           <button
             class="code-btn"
@@ -69,7 +69,7 @@
             :disabled="countdown > 0 || isSendingCode"
             @click="sendCode"
           >
-            {{ isSendingCode ? 'Sending...' : (countdown > 0 ? `${countdown}s` : 'Get Code') }}
+            {{ isSendingCode ? '发送中...' : (countdown > 0 ? `${countdown}s` : '获取验证码') }}
           </button>
         </view>
       </view>
@@ -82,7 +82,7 @@
         :disabled="isSubmitting"
         @click="submit"
       >
-        {{ isSubmitting ? 'Submitting...' : submitText }}
+        {{ isSubmitting ? '提交中...' : submitText }}
       </button>
 
       <view class="footer-links">
@@ -93,7 +93,7 @@
           hover-stay-time="70"
           @click="switchMode('signup')"
         >
-          <text class="link">Create Account</text>
+          <text class="link">注册账号</text>
         </view>
         <view
           v-if="mode === 'login'"
@@ -102,7 +102,7 @@
           hover-stay-time="70"
           @click="goResetPassword"
         >
-          <text class="link">Forgot Password</text>
+          <text class="link">忘记密码</text>
         </view>
         <view
           v-if="mode !== 'login'"
@@ -111,7 +111,7 @@
           hover-stay-time="70"
           @click="switchMode('login')"
         >
-          <text class="link">Back To Login</text>
+          <text class="link">返回登录</text>
         </view>
       </view>
     </view>
@@ -127,14 +127,14 @@ import {
 
 const MODE_META = {
   login: {
-    title: 'Dispatcher Login',
-    subtitle: 'Sign in to manage scooter dispatch tasks',
-    submitText: 'Sign In'
+    title: '调度员登录',
+    subtitle: '登录后可管理车辆调度任务',
+    submitText: '登录'
   },
   signup: {
-    title: 'Create Dispatcher Account',
-    subtitle: 'Register a new dispatcher account with email verification',
-    submitText: 'Register'
+    title: '注册调度员账号',
+    subtitle: '使用邮箱验证码完成调度员注册',
+    submitText: '注册'
   }
 }
 
@@ -155,8 +155,8 @@ export default {
       isSendingCode: false,
       isSubmitting: false,
       tabs: [
-        { mode: 'login', label: 'Login' },
-        { mode: 'signup', label: 'Sign Up' }
+        { mode: 'login', label: '登录' },
+        { mode: 'signup', label: '注册' }
       ]
     }
   },
@@ -203,7 +203,7 @@ export default {
     async sendCode() {
       if (!this.form.email) {
         uni.showToast({
-          title: 'Enter email first',
+          title: '请先输入邮箱',
           icon: 'none'
         })
         return
@@ -217,7 +217,7 @@ export default {
       try {
         await getVerificationCode(this.form.email)
         uni.showToast({
-          title: 'Code sent',
+          title: '验证码已发送',
           icon: 'success'
         })
         this.startCountdown()
@@ -247,7 +247,7 @@ export default {
     async submit() {
       if (!this.form.email) {
         uni.showToast({
-          title: 'Enter email',
+          title: '请输入邮箱',
           icon: 'none'
         })
         return
@@ -255,7 +255,7 @@ export default {
 
       if (!this.form.password) {
         uni.showToast({
-          title: 'Enter password',
+          title: '请输入密码',
           icon: 'none'
         })
         return
@@ -263,7 +263,7 @@ export default {
 
       if (this.mode === 'signup' && (!this.form.name || !this.form.verificationCode)) {
         uni.showToast({
-          title: 'Complete all fields',
+          title: '请填写完整信息',
           icon: 'none'
         })
         return
@@ -277,7 +277,7 @@ export default {
 
       try {
         uni.showLoading({
-          title: 'Submitting...'
+          title: '提交中...'
         })
 
         if (this.mode === 'login') {
@@ -291,12 +291,12 @@ export default {
           }
           uni.setStorageSync('dispatcherUserInfo', {
             id: data.id || '',
-            name: data.name || 'Dispatcher',
+            name: data.name || '调度员',
             email: data.email || this.form.email
           })
           uni.hideLoading()
           uni.showToast({
-            title: 'Login success',
+            title: '登录成功',
             icon: 'success'
           })
           setTimeout(() => {
@@ -316,7 +316,7 @@ export default {
         })
         uni.hideLoading()
         uni.showToast({
-          title: 'Registered',
+          title: '注册成功',
           icon: 'success'
         })
         this.switchMode('login')
