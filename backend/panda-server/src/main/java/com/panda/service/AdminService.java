@@ -1,13 +1,7 @@
 package com.panda.service;
 
-import com.panda.dto.AdminLoginDTO;
-import com.panda.dto.DataOverviewDTO;
-import com.panda.dto.LiveDataDTO;
-import com.panda.dto.PricingRuleEditDTO;
-import com.panda.vo.AdminLoginVO;
-import com.panda.vo.DataOverviewVO;
-import com.panda.vo.LiveDataVO;
-import com.panda.vo.PricingRuleVO;
+import com.panda.dto.*;
+import com.panda.vo.*;
 
 import java.util.List;
 
@@ -24,4 +18,12 @@ public interface AdminService {
     PricingRuleVO getPricingRules();
 
     void editRules(PricingRuleEditDTO editDTO);
+
+    PackageListVO getPackageList(PackageListDTO packageListDTO);
+
+    void addPackage(AddPackageDTO addPackageDTO);
+
+    void editPackage(EditPackageDTO editPackageDTO);
+
+    void deletePackage(DeletePackageDTO deletePackageDTO);
 }

@@ -1,21 +1,16 @@
 package com.panda.service.impl;
 
 import com.panda.context.BaseContext;
-import com.panda.dto.AdminLoginDTO;
-import com.panda.dto.DataOverviewDTO;
-import com.panda.dto.LiveDataDTO;
-import com.panda.dto.PricingRuleEditDTO;
+import com.panda.dto.*;
 import com.panda.entity.Admin;
 import com.panda.entity.PricingRule;
+import com.panda.entity.SubscriptionPackage;
 import com.panda.exception.BaseException;
 import com.panda.mapper.*;
 import com.panda.properties.JwtProperties;
 import com.panda.service.AdminService;
-import com.panda.vo.AdminLoginVO;
+import com.panda.vo.*;
 import com.panda.utils.JwtUtil;
-import com.panda.vo.DataOverviewVO;
-import com.panda.vo.LiveDataVO;
-import com.panda.vo.PricingRuleVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,6 +19,7 @@ import org.springframework.util.DigestUtils;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -53,6 +49,9 @@ public class AdminServiceImpl implements AdminService {
 
     @Autowired
     private PricingRuleMapper pricingRuleMapper;
+
+    @Autowired
+    private SubscriptionPackageMapper subscriptionPackageMapper;
 
     @Override
     public AdminLoginVO login(AdminLoginDTO adminLoginDTO) {
@@ -171,6 +170,160 @@ public class AdminServiceImpl implements AdminService {
         if (rows == 0) {
             pricingRuleMapper.insertRule(editDTO);
         }
+    }
+
+    @Override
+    public PackageListVO getPackageList(PackageListDTO packageListDTO) {
+        log.info("获取套餐列表，参数：{}", packageListDTO);
+
+        // 设置默认值
+        int page = packageListDTO.getPage() != null ? packageListDTO.getPage() : 1;
+        int pageSize = packageListDTO.getPageSize() != null ? packageListDTO.getPageSize() : 10;
+        int offset = (page - 1) * pageSize;
+
+        String status = packageListDTO.getStatus();
+        String keyword = packageListDTO.getKeyword();
+
+        // 查询数据
+        List<SubscriptionPackage> packageList = subscriptionPackageMapper.getPackageList(offset, pageSize, status, keyword);
+        Integer total = subscriptionPackageMapper.countPackageList(status, keyword);
+
+        // 转换为 VO
+        List<PackageListVO.PackageItem> items = new ArrayList<>();
+        if (packageList != null) {
+            for (SubscriptionPackage pkg : packageList) {
+                items.add(PackageListVO.PackageItem.builder()
+                        .id(pkg.getId())
+                        .title(pkg.getTitle())
+                        .description(pkg.getDescription())
+                        .type(pkg.getType())
+                        .price(pkg.getPrice())
+                        .status(pkg.getStatus())
+                        .createTime(pkg.getCreateTime() != null ? pkg.getCreateTime().toString() : null)
+                        .build());
+            }
+        }
+
+        return PackageListVO.builder()
+                .total(total != null ? total : 0)
+                .page(page)
+                .pageSize(pageSize)
+                .list(items)
+                .build();
+    }
+
+    @Override
+    public void addPackage(AddPackageDTO addPackageDTO) {
+        log.info("新增套餐，参数：{}", addPackageDTO);
+
+        // 参数校验
+        if (addPackageDTO.getTitle() == null || addPackageDTO.getTitle().isEmpty()) {
+            throw new BaseException("套餐标题不能为空");
+        }
+        if (addPackageDTO.getPrice() == null) {
+            throw new BaseException("套餐价格不能为空");
+        }
+        if (addPackageDTO.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BaseException("套餐价格必须大于0");
+        }
+
+        // 构建实体类
+        SubscriptionPackage subscriptionPackage = new SubscriptionPackage();
+        subscriptionPackage.setTitle(addPackageDTO.getTitle());
+        subscriptionPackage.setDescription(addPackageDTO.getDescription());
+        subscriptionPackage.setPrice(addPackageDTO.getPrice());
+        subscriptionPackage.setType(addPackageDTO.getType() != null ? addPackageDTO.getType() : 1);
+        subscriptionPackage.setStatus(1);  // 默认启用
+
+        // 处理创建时间
+        if (addPackageDTO.getCreateTime() != null) {
+            // 如果有传入，解析时间字符串
+            try {
+                subscriptionPackage.setCreateTime(LocalDateTime.parse(addPackageDTO.getCreateTime(),
+                        java.time.format.DateTimeFormatter.ISO_DATE_TIME));
+            } catch (Exception e) {
+                subscriptionPackage.setCreateTime(LocalDateTime.now());
+            }
+        } else {
+            subscriptionPackage.setCreateTime(LocalDateTime.now());
+        }
+
+        // 插入数据库
+        int rows = subscriptionPackageMapper.insertPackage(subscriptionPackage);
+        if (rows == 0) {
+            throw new BaseException("新增套餐失败");
+        }
+
+        log.info("新增套餐成功，id：{}", subscriptionPackage.getId());
+    }
+
+    @Override
+    public void editPackage(EditPackageDTO editPackageDTO) {
+        log.info("编辑套餐，参数：{}", editPackageDTO);
+
+        // 参数校验
+        if (editPackageDTO.getId() == null) {
+            throw new BaseException("套餐ID不能为空");
+        }
+        if (editPackageDTO.getPrice() == null) {
+            throw new BaseException("套餐价格不能为空");
+        }
+        if (editPackageDTO.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BaseException("套餐价格必须大于0");
+        }
+
+        // 检查套餐是否存在
+        SubscriptionPackage existingPackage = subscriptionPackageMapper.getById(editPackageDTO.getId());
+        if (existingPackage == null) {
+            throw new BaseException("套餐不存在");
+        }
+
+        // 更新字段（只更新非空的字段）
+        SubscriptionPackage updatePackage = new SubscriptionPackage();
+        updatePackage.setId(editPackageDTO.getId());
+
+        if (editPackageDTO.getTitle() != null && !editPackageDTO.getTitle().isEmpty()) {
+            updatePackage.setTitle(editPackageDTO.getTitle());
+        }
+        if (editPackageDTO.getDescription() != null) {
+            updatePackage.setDescription(editPackageDTO.getDescription());
+        }
+        updatePackage.setPrice(editPackageDTO.getPrice());
+        if (editPackageDTO.getType() != null) {
+            updatePackage.setType(editPackageDTO.getType());
+        }
+
+        // 更新数据库
+        int rows = subscriptionPackageMapper.updatePackage(updatePackage);
+        if (rows == 0) {
+            throw new BaseException("编辑套餐失败");
+        }
+
+        log.info("编辑套餐成功，id：{}", editPackageDTO.getId());
+    }
+
+    @Override
+    public void deletePackage(DeletePackageDTO deletePackageDTO) {
+        log.info("删除套餐，参数：{}", deletePackageDTO);
+
+        // 参数校验
+        if (deletePackageDTO.getId() == null) {
+            throw new BaseException("套餐ID不能为空");
+        }
+
+        // 检查套餐是否存在
+        SubscriptionPackage existingPackage = subscriptionPackageMapper.getById(deletePackageDTO.getId());
+        if (existingPackage == null) {
+            throw new BaseException("套餐不存在");
+        }
+
+        // 删除套餐
+        int rows = subscriptionPackageMapper.deleteById(deletePackageDTO.getId());
+        if (rows == 0) {
+            throw new BaseException("删除套餐失败");
+        }
+
+        log.info("删除套餐成功，id：{}", deletePackageDTO.getId());
     }
 
     private String encrypt(String value) {
