@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/admin/dispatchers")
 @Slf4j
-public class AdminDispatcherController {   // 改名
+public class AdminDispatcherController {
 
     @Autowired
     private AdminService adminService;
