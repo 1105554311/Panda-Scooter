@@ -26,4 +26,20 @@ public interface AdminService {
     void editPackage(EditPackageDTO editPackageDTO);
 
     void deletePackage(DeletePackageDTO deletePackageDTO);
+
+    ZoneListVO getZoneList(ZoneListDTO zoneListDTO);
+
+    AddZoneVO addZone(AddZoneDTO addZoneDTO);
+
+    ZoneDetailVO getZoneDetail(ZoneDetailDTO zoneDetailDTO);
+
+    EditZoneVO editZone(EditZoneDTO editZoneDTO);
+
+    void deleteZone(DeleteZoneDTO deleteZoneDTO);
+
+    DispatcherListVO getDispatcherList(DispatcherListDTO dispatcherListDTO);
+
+    AddDispatcherVO addDispatcher(AddDispatcherDTO addDispatcherDTO);
+
+    EditDispatcherVO editDispatcher(EditDispatcherDTO editDispatcherDTO);
 }

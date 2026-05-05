@@ -42,4 +42,58 @@
         delete from dispatcher where id = #{id}
     </delete>
 
+    <select id="getDispatcherList" resultType="com.panda.entity.Dispatcher">
+        select id, name, email, area_id, create_time
+        from dispatcher
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and (name like concat('%', #{keyword}, '%')
+                or email like concat('%', #{keyword}, '%'))
+            </if>
+            <if test="areaId != null">
+                and area_id = #{areaId}
+            </if>
+        </where>
+        order by id desc
+        limit #{offset}, #{pageSize}
+    </select>
+
+    <select id="countDispatcherList" resultType="java.lang.Integer">
+        select count(*)
+        from dispatcher
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and (name like concat('%', #{keyword}, '%')
+                or email like concat('%', #{keyword}, '%'))
+            </if>
+            <if test="areaId != null">
+                and area_id = #{areaId}
+            </if>
+        </where>
+    </select>
+
+    <insert id="insertDispatcher" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO dispatcher (name, password, email, area_id, status, create_time)
+        VALUES (#{name}, #{password}, #{email}, #{areaId}, 1, NOW())
+    </insert>
+
+    <update id="updateDispatcher">
+        UPDATE dispatcher
+        <set>
+            <if test="name != null and name != ''">
+                name = #{name},
+            </if>
+            <if test="password != null and password != ''">
+                password = #{password},
+            </if>
+            <if test="email != null and email != ''">
+                email = #{email},
+            </if>
+            <if test="areaId != null">
+                area_id = #{areaId},
+            </if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
 </mapper>
