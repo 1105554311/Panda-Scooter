@@ -1,6 +1,6 @@
 {
-    "name" : "熊猫调度",
-    "appid" : "wxb0ca900326caa93d",
+    "name" : "\u718a\u732b\u8c03\u5ea6",
+    "appid" : "__UNI__B0BCD9F",
     "description" : "",
     "versionName" : "1.0.0",
     "versionCode" : "100",
@@ -50,17 +50,14 @@
     "quickapp" : {},
     /* 小程序特有相关 */
     "mp-weixin" : {
-        "appid" : "wxb0ca900326caa93d",
+        "appid" : "wxa4fdf8b43cccf868",
         "setting" : {
             "urlCheck" : false
         },
         "usingComponents" : true,
         "permission" : {
-            "scope.camera" : {
-                "desc" : "用于打开补光灯，方便在暗光环境下输入或识别车辆编号"
-            },
             "scope.userLocation" : {
-                "desc" : "用于获取您的位置信息，以便在地图上展示当前位置和附近车辆"
+                "desc" : "\u7528\u4e8e\u83b7\u53d6\u60a8\u7684\u4f4d\u7f6e\u4fe1\u606f\uff0c\u4ee5\u4fbf\u5728\u5730\u56fe\u4e0a\u5c55\u793a\u5f53\u524d\u4f4d\u7f6e\u548c\u9644\u8fd1\u8f66\u8f86"
             }
         }
     },

@@ -15,7 +15,7 @@ const _sfc_main = {
       const filters = {
         all: () => true,
         today: (item) => item.isToday,
-        processing: (item) => item.status === 1
+        processing: (item) => item.status === 0
       };
       return this.historyList.filter(filters[this.currentFilter]);
     }
@@ -44,15 +44,15 @@ const _sfc_main = {
       const endTime = item.endTime || item.finishTime || "";
       const rideStatus = this.normalizeRideStatus(item);
       const faultStatus = this.normalizeFaultStatus(item);
-      const status = this.normalizeStatus(item, rideStatus);
+      const status = this.normalizeStatus(item);
       return {
         id: item.id || item.dispatchId || index + 1,
         code: item.scooterCode || item.code || item.vehicleCode || `车辆 ${index + 1}`,
         sortTime: this.toTimestamp(startTime),
         status,
-        statusText: status === 1 ? "调度中" : "已完成",
-        statusClass: status === 1 ? "tag-processing" : "tag-completed",
-        canLock: status === 1,
+        statusText: status === 0 ? "调度中" : "已完成",
+        statusClass: status === 0 ? "tag-processing" : "tag-completed",
+        canLock: status === 0,
         startTimeText: this.formatDateTime(startTime),
         endTimeText: endTime ? this.formatDateTime(endTime) : "--",
         rideStatus,
@@ -64,13 +64,13 @@ const _sfc_main = {
         isToday: this.isToday(startTime)
       };
     },
-    normalizeStatus(item, rideStatus) {
+    normalizeStatus(item) {
       const rawStatus = item.status ?? item.dispatchStatus ?? item.taskStatus ?? item.resultStatus;
       const numericStatus = Number(rawStatus);
       if (numericStatus === 0 || numericStatus === 1) {
         return numericStatus;
       }
-      return Number(rideStatus) === 1 ? 1 : 0;
+      return 1;
     },
     normalizeRideStatus(item) {
       const rawStatus = item.rideStatus ?? item.ride_status ?? item.vehicleStatus;
@@ -195,8 +195,8 @@ function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
         b: common_vendor.t(item.startTimeText),
         c: common_vendor.t(item.statusText),
         d: common_vendor.n(item.statusClass),
-        e: item.status !== 1
-      }, item.status !== 1 ? {
+        e: item.status === 1
+      }, item.status === 1 ? {
         f: common_vendor.t(item.endTimeText)
       } : {}, {
         g: common_vendor.t(item.rideStatusText),

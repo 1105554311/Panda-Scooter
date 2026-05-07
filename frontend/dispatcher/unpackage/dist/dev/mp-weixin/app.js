@@ -8,6 +8,7 @@ if (!Math) {
   "./pages/profile/profile.js";
   "./pages/account/account.js";
   "./pages/history/history.js";
+  "./pages/vehicleLookup/vehicleLookup.js";
   "./pages/unlock/unlock.js";
   "./pages/lock/lock.js";
   "./pages/scooterInfo/scooterInfo.js";

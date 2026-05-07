@@ -79,6 +79,7 @@
 <script>
 import actionGuard from '@/mixins/actionGuard'
 import { getMapData, getScooterInfo, getSubscriptions, unlockScooter, userBill } from '@/api/index'
+import { formatBackendDateTime } from '@/utils/dateTime'
 import { showUnhandledError } from '@/utils/error'
 
 const CURRENT_RIDE_STORAGE_KEY = 'currentRide'
@@ -524,7 +525,7 @@ export default {
             currentLatitude: Number(scooterInfo.latitude || this.latitude),
             currentLongitude: Number(scooterInfo.longitude || this.longitude),
             routePoints: [],
-            startTime: new Date().toISOString(),
+            startTime: formatBackendDateTime(),
             totalKilometer: 0,
             amount: 0,
             active: true
@@ -598,7 +599,7 @@ export default {
 
       this.withAction(actionKey, async () => {
         const amount = Number(pkg && pkg.price)
-        const subscriptionType = this.normalizeSubscriptionType(pkg)
+        const packageId = this.normalizepackageId(pkg)
 
         if (!Number.isFinite(amount) || amount <= 0) {
           uni.showToast({
@@ -608,7 +609,7 @@ export default {
           return
         }
 
-        if (!subscriptionType) {
+        if (!packageId) {
           uni.showToast({
             title: '套餐类型异常',
             icon: 'none'
@@ -622,9 +623,9 @@ export default {
           })
           await userBill({
             type: 4,
-            amount: -Math.abs(amount),
+            amount: Math.abs(amount),
             remark: `购买套餐-${pkg.title || '骑行套餐'}`,
-            subscriptionType
+            packageId
           })
           uni.hideLoading()
           uni.showToast({
@@ -640,7 +641,7 @@ export default {
     getSubscriptionActionKey(pkg) {
       return `buySubscription-${pkg && pkg.id ? pkg.id : 'default'}`
     },
-    normalizeSubscriptionType(pkg) {
+    normalizepackageId(pkg) {
       const type = Number(pkg && pkg.type)
       if ([1, 2, 3].includes(type)) {
         return type

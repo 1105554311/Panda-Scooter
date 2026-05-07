@@ -82,6 +82,7 @@
 <script>
 import actionGuard from '@/mixins/actionGuard'
 import { lockScooter } from '@/api/index'
+import { formatBackendDateTime, normalizeBackendDateTime, parseDateTimeValue } from '@/utils/dateTime'
 import { showUnhandledError } from '@/utils/error'
 
 const CURRENT_RIDE_STORAGE_KEY = 'currentRide'
@@ -261,7 +262,7 @@ export default {
         battery: Number(cachedRide.battery || 0),
         rideStatus: cachedRide.rideStatus || 1,
         faultStatus: cachedRide.faultStatus || 0,
-        startTime: cachedRide.startTime || new Date().toISOString(),
+        startTime: normalizeBackendDateTime(cachedRide.startTime),
         totalKilometer: Number(cachedRide.totalKilometer || 0),
         amount: Number(cachedRide.amount || 0),
         routePoints,
@@ -300,7 +301,13 @@ export default {
       }
     },
     updateElapsedSeconds() {
-      const startTime = new Date(this.ride.startTime).getTime()
+      const startDate = parseDateTimeValue(this.ride.startTime)
+      if (!startDate) {
+        this.elapsedSeconds = 0
+        return
+      }
+
+      const startTime = startDate.getTime()
       const currentTime = Date.now()
       this.elapsedSeconds = Math.max(0, Math.floor((currentTime - startTime) / 1000))
     },
@@ -385,7 +392,7 @@ export default {
       if (!value) {
         return '--'
       }
-      return String(value).replace('T', ' ').replace('Z', '').slice(0, 19)
+      return formatBackendDateTime(value) || '--'
     },
     goFaultReport() {
       if (!this.ride.orderId) {
@@ -412,10 +419,10 @@ export default {
           uni.showLoading({
             title: this.labels.finishLoading
           })
-          const endTime = new Date().toISOString()
+          const endTime = formatBackendDateTime()
           const payload = {
             orderId: Number(this.ride.orderId),
-            startTime: this.ride.startTime,
+            startTime: normalizeBackendDateTime(this.ride.startTime),
             endTime,
             amount: Number(this.ride.amount.toFixed(2)),
             totalKilometer: Number(this.ride.totalKilometer.toFixed(2)),

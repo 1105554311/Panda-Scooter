@@ -213,9 +213,8 @@ const _sfc_main = {
       if (!this.ensureLoggedIn()) {
         return;
       }
-      common_vendor.index.showToast({
-        title: "车辆查询接口开发中",
-        icon: "none"
+      common_vendor.index.navigateTo({
+        url: "/pages/vehicleLookup/vehicleLookup"
       });
     },
     navigateTo(page) {

@@ -3,61 +3,67 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "调度首页"
+        "navigationBarTitleText": "\u8c03\u5ea6\u9996\u9875"
       }
     },
     {
       "path": "pages/login/login",
       "style": {
-        "navigationBarTitleText": "调度员登录"
+        "navigationBarTitleText": "\u8c03\u5ea6\u5458\u767b\u5f55"
       }
     },
     {
       "path": "pages/resetPassword/resetPassword",
       "style": {
-        "navigationBarTitleText": "重置密码"
+        "navigationBarTitleText": "\u91cd\u7f6e\u5bc6\u7801"
       }
     },
     {
       "path": "pages/profile/profile",
       "style": {
-        "navigationBarTitleText": "个人主页"
+        "navigationBarTitleText": "\u4e2a\u4eba\u4e3b\u9875"
       }
     },
     {
       "path": "pages/account/account",
       "style": {
-        "navigationBarTitleText": "账号管理"
+        "navigationBarTitleText": "\u8d26\u53f7\u7ba1\u7406"
       }
     },
     {
       "path": "pages/history/history",
       "style": {
-        "navigationBarTitleText": "调度历史"
+        "navigationBarTitleText": "\u8c03\u5ea6\u5386\u53f2"
+      }
+    },
+    {
+      "path": "pages/vehicleLookup/vehicleLookup",
+      "style": {
+        "navigationBarTitleText": "\u8f66\u8f86\u67e5\u8be2"
       }
     },
     {
       "path": "pages/unlock/unlock",
       "style": {
-        "navigationBarTitleText": "编号开锁"
+        "navigationBarTitleText": "\u7f16\u53f7\u5f00\u9501"
       }
     },
     {
       "path": "pages/lock/lock",
       "style": {
-        "navigationBarTitleText": "关锁停放"
+        "navigationBarTitleText": "\u5173\u9501\u505c\u653e"
       }
     },
     {
       "path": "pages/scooterInfo/scooterInfo",
       "style": {
-        "navigationBarTitleText": "车辆信息"
+        "navigationBarTitleText": "\u8f66\u8f86\u4fe1\u606f"
       }
     }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "熊猫调度",
+    "navigationBarTitleText": "\u718a\u732b\u8c03\u5ea6",
     "navigationBarBackgroundColor": "#F8F8F8",
     "backgroundColor": "#F8F8F8"
   },

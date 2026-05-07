@@ -30,7 +30,7 @@
           </view>
 
           <view class="history-body">
-            <view v-if="item.status !== 1" class="info-row">
+            <view v-if="item.status === 1" class="info-row">
               <text class="info-label">结束时间</text>
               <text class="info-value">{{ item.endTimeText }}</text>
             </view>
@@ -78,7 +78,7 @@ export default {
       const filters = {
         all: () => true,
         today: (item) => item.isToday,
-        processing: (item) => item.status === 1
+        processing: (item) => item.status === 0
       }
       return this.historyList.filter(filters[this.currentFilter])
     }
@@ -115,16 +115,16 @@ export default {
       const endTime = item.endTime || item.finishTime || ''
       const rideStatus = this.normalizeRideStatus(item)
       const faultStatus = this.normalizeFaultStatus(item)
-      const status = this.normalizeStatus(item, rideStatus)
+      const status = this.normalizeStatus(item)
 
       return {
         id: item.id || item.dispatchId || index + 1,
         code: item.scooterCode || item.code || item.vehicleCode || `车辆 ${index + 1}`,
         sortTime: this.toTimestamp(startTime),
         status,
-        statusText: status === 1 ? '调度中' : '已完成',
-        statusClass: status === 1 ? 'tag-processing' : 'tag-completed',
-        canLock: status === 1,
+        statusText: status === 0 ? '调度中' : '已完成',
+        statusClass: status === 0 ? 'tag-processing' : 'tag-completed',
+        canLock: status === 0,
         startTimeText: this.formatDateTime(startTime),
         endTimeText: endTime ? this.formatDateTime(endTime) : '--',
         rideStatus,
@@ -136,14 +136,14 @@ export default {
         isToday: this.isToday(startTime)
       }
     },
-    normalizeStatus(item, rideStatus) {
+    normalizeStatus(item) {
       const rawStatus = item.status ?? item.dispatchStatus ?? item.taskStatus ?? item.resultStatus
       const numericStatus = Number(rawStatus)
       if (numericStatus === 0 || numericStatus === 1) {
         return numericStatus
       }
 
-      return Number(rideStatus) === 1 ? 1 : 0
+      return 1
     },
     normalizeRideStatus(item) {
       const rawStatus = item.rideStatus ?? item.ride_status ?? item.vehicleStatus

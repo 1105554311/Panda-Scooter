@@ -69,6 +69,7 @@
 <script>
 import actionGuard from '@/mixins/actionGuard'
 import { getScooterInfo, unlockScooter } from '@/api/index'
+import { formatBackendDateTime } from '@/utils/dateTime'
 import { showUnhandledError } from '@/utils/error'
 
 const CURRENT_RIDE_STORAGE_KEY = 'currentRide'
@@ -341,7 +342,7 @@ export default {
             currentLatitude: Number(scooterInfo.latitude || 0),
             currentLongitude: Number(scooterInfo.longitude || 0),
             routePoints: [],
-            startTime: new Date().toISOString(),
+            startTime: formatBackendDateTime(),
             totalKilometer: 0,
             amount: 0,
             active: true

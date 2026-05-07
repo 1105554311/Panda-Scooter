@@ -302,9 +302,8 @@ export default {
         return
       }
 
-      uni.showToast({
-        title: '车辆查询接口开发中',
-        icon: 'none'
+      uni.navigateTo({
+        url: '/pages/vehicleLookup/vehicleLookup'
       })
     },
     navigateTo(page) {

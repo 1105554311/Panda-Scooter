@@ -25,17 +25,11 @@
 
     <view v-if="!hasToken" class="guest-card">
       <text class="guest-title">当前为访客模式</text>
-      <text class="guest-desc">登录后可查看收入、调度任务和调度历史。</text>
+      <text class="guest-desc">登录后可查看调度历史。</text>
       <button class="login-btn" @click="goLogin('login')">去登录</button>
     </view>
 
     <view class="menu-section">
-      <view class="menu-item" @click="showComingSoon('我的收入')">
-        <text class="menu-text">我的收入</text>
-      </view>
-      <view class="menu-item" @click="showComingSoon('调度任务')">
-        <text class="menu-text">调度任务</text>
-      </view>
       <view class="menu-item" @click="navigateTo('history')">
         <text class="menu-text">调度历史</text>
       </view>
@@ -119,17 +113,6 @@ export default {
 
       uni.navigateTo({
         url: `/pages/${page}/${page}`
-      })
-    },
-    showComingSoon(title) {
-      if (!this.hasToken) {
-        this.goLogin('login')
-        return
-      }
-
-      uni.showToast({
-        title: `${title}接口开发中`,
-        icon: 'none'
       })
     }
   }

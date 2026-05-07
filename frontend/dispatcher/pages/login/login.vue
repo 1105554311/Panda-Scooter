@@ -129,7 +129,7 @@ import { normalizeDispatcherUserInfo } from '@/utils/dispatcherUser'
 const MODE_META = {
   login: {
     title: '调度员登录',
-    subtitle: '登录后可管理车辆调度任务',
+    subtitle: '登录后可使用调度功能',
     submitText: '登录'
   },
   signup: {

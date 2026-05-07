@@ -110,6 +110,7 @@
 <script>
 import actionGuard from '@/mixins/actionGuard'
 import { getScooterInfo, lockScooter, reportFault } from '@/api/index'
+import { formatBackendDateTime, normalizeBackendDateTime } from '@/utils/dateTime'
 import { showUnhandledError } from '@/utils/error'
 
 const CURRENT_RIDE_STORAGE_KEY = 'currentRide'
@@ -240,8 +241,8 @@ export default {
 
       const payload = {
         orderId: Number(ride.orderId),
-        startTime: ride.startTime || new Date().toISOString(),
-        endTime: new Date().toISOString(),
+        startTime: normalizeBackendDateTime(ride.startTime),
+        endTime: formatBackendDateTime(),
         amount: 0,
         totalKilometer: Number(Number(ride.totalKilometer || 0).toFixed(2)),
         code: Number(ride.scooterId || fallbackScooterId),
