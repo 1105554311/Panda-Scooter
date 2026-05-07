@@ -4,6 +4,7 @@ import com.panda.interceptor.JwtTokenUserInterceptor;
 import com.panda.interceptor.JwtTokenDispatcherInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -13,6 +14,16 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
 
     private final JwtTokenUserInterceptor jwtTokenUserInterceptor;
     private final JwtTokenDispatcherInterceptor jwtTokenDispatcherInterceptor;
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(false)
+                .maxAge(3600);
+    }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
