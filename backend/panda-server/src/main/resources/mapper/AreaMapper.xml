@@ -16,4 +16,56 @@
         order by id desc
     </select>
 
+    <!-- 分页查询片区列表 -->
+    <select id="getZoneList" resultType="com.panda.entity.Area">
+        select id, name, polygon, create_time
+        from area
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and name like concat('%', #{keyword}, '%')
+            </if>
+        </where>
+        order by id desc
+        limit #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计片区总数 -->
+    <select id="countZoneList" resultType="java.lang.Integer">
+        select count(*)
+        from area
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and name like concat('%', #{keyword}, '%')
+            </if>
+        </where>
+    </select>
+
+    <insert id="insertArea" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO area (name, polygon, create_time)
+        VALUES (#{name}, #{polygon}, NOW())
+    </insert>
+
+    <select id="getZoneDetailById" resultType="com.panda.entity.Area">
+        select id, name, polygon, create_time
+        from area
+        where id = #{id}
+    </select>
+
+    <update id="updateArea">
+        UPDATE area
+        <set>
+            <if test="name != null and name != ''">
+                name = #{name},
+            </if>
+            <if test="polygon != null">
+                polygon = #{polygon},
+            </if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM area WHERE id = #{id}
+    </delete>
+
 </mapper>

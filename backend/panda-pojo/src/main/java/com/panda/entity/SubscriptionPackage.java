@@ -12,4 +12,5 @@ public class SubscriptionPackage {
     private java.math.BigDecimal price;
     private Integer type;
     private LocalDateTime createTime;
+    private Integer status;
 }
