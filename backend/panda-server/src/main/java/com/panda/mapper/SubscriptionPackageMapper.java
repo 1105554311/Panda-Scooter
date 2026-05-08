@@ -18,14 +18,12 @@ public interface SubscriptionPackageMapper {
      */
     List<SubscriptionPackage> getPackageList(@Param("offset") Integer offset,
                                              @Param("pageSize") Integer pageSize,
-                                             @Param("status") String status,
                                              @Param("keyword") String keyword);
 
     /**
      * 统计套餐总数
      */
-    Integer countPackageList(@Param("status") String status,
-                             @Param("keyword") String keyword);
+    Integer countPackageList(@Param("keyword") String keyword);
 
     /**
      * 新增套餐

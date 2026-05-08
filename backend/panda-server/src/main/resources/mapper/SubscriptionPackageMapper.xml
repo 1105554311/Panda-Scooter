@@ -27,12 +27,9 @@
 
     <!-- 分页查询套餐列表 -->
     <select id="getPackageList" resultMap="subscriptionPackageResultMap">
-        select id, title, description, price, type, status, create_time
+        select id, title, description, price, type, create_time
         from subscription_package
         <where>
-            <if test="status != null and status != ''">
-                and status = #{status}
-            </if>
             <if test="keyword != null and keyword != ''">
                 and (title like concat('%', #{keyword}, '%')
                 or description like concat('%', #{keyword}, '%'))
@@ -47,9 +44,6 @@
         select count(*)
         from subscription_package
         <where>
-            <if test="status != null and status != ''">
-                and status = #{status}
-            </if>
             <if test="keyword != null and keyword != ''">
                 and (title like concat('%', #{keyword}, '%')
                 or description like concat('%', #{keyword}, '%'))
@@ -58,8 +52,8 @@
     </select>
 
     <insert id="insertPackage" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO subscription_package (title, description, price, type, status, create_time)
-        VALUES (#{title}, #{description}, #{price}, #{type}, #{status}, #{createTime})
+        INSERT INTO subscription_package (title, description, price, type, create_time)
+        VALUES (#{title}, #{description}, #{price}, #{type}, #{createTime})
     </insert>
 
     <update id="updatePackage">

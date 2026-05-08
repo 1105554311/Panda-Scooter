@@ -33,10 +33,13 @@ public interface RentalOrderMapper {
     /**
      * 统计日期范围内的订单总数
      */
-    @Select("SELECT COUNT(*) FROM rental_order WHERE DATE(create_time) BETWEEN #{startDate} AND #{endDate}")
     Integer countByDateRange(@Param("startDate") LocalDate startDate,
                              @Param("endDate") LocalDate endDate,
-                             @Param("areaId") Integer areaId);
+                             @Param("scooterIds") List<Long> scooterIds);
+
+    java.math.BigDecimal sumAmountByDateRange(@Param("startDate") LocalDate startDate,
+                                               @Param("endDate") LocalDate endDate,
+                                               @Param("scooterIds") List<Long> scooterIds);
 
     /**
      * 统计日期范围内已完成的订单数
@@ -70,12 +73,9 @@ public interface RentalOrderMapper {
     /**
      * 获取趋势数据（按日/周/月分组）
      */
-    @Select("SELECT DATE(create_time) as date, COUNT(*) as order_count, SUM(amount) as revenue " +
-            "FROM rental_order WHERE DATE(create_time) BETWEEN #{startDate} AND #{endDate} " +
-            "GROUP BY DATE(create_time) ORDER BY date")
     List<Map<String, Object>> getTrendData(@Param("startDate") LocalDate startDate,
                                            @Param("endDate") LocalDate endDate,
                                            @Param("granularity") String granularity,
-                                           @Param("areaId") Integer areaId);
+                                           @Param("scooterIds") List<Long> scooterIds);
 
 }

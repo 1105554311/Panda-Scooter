@@ -1,5 +1,7 @@
 package com.panda.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.panda.context.BaseContext;
 import com.panda.dto.*;
 import com.panda.entity.*;
@@ -86,7 +88,6 @@ public class AdminServiceImpl implements AdminService {
             throw new BaseException("未登录");
         }
         log.info("管理员登出，adminId: {}", adminId);
-        BaseContext.removeCurrentId();
     }
 
     @Override
@@ -97,30 +98,28 @@ public class AdminServiceImpl implements AdminService {
         if (overviewDTO.getEndDate() == null) {
             overviewDTO.setEndDate(LocalDate.now());
         }
+        String granularity = normalizeGranularity(overviewDTO.getGranularity());
+        List<Long> scooterIds = resolveAreaScooterIds(overviewDTO.getAreaId());
 
         List<Map<String, Object>> trendResults = rentalOrderMapper.getTrendData(
                 overviewDTO.getStartDate(),
                 overviewDTO.getEndDate(),
-                overviewDTO.getGranularity(),
-                overviewDTO.getAreaId()
+                granularity,
+                scooterIds
         );
 
-        List<DataOverviewVO.SeriesItem> series = new ArrayList<>();
-        if (trendResults != null) {
-            for (Map<String, Object> row : trendResults) {
-                series.add(DataOverviewVO.SeriesItem.builder()
-                        .time(row.get("date").toString())
-                        .orderCount(String.valueOf(((Number) row.get("order_count")).intValue()))
-                        .revenue(row.get("revenue") != null ? row.get("revenue").toString() : "0")
-                        .build());
-            }
-        }
+        List<DataOverviewVO.SeriesItem> series = buildOverviewSeries(
+                overviewDTO.getStartDate(),
+                overviewDTO.getEndDate(),
+                granularity,
+                trendResults
+        );
 
         return DataOverviewVO.builder()
                 .startDate(overviewDTO.getStartDate().toString())
                 .endDate(overviewDTO.getEndDate().toString())
-                .granularity(overviewDTO.getGranularity() != null ? overviewDTO.getGranularity() : "day")
-                .areaID(overviewDTO.getAreaId() != null ? overviewDTO.getAreaId().toString() : null)
+                .granularity(granularity)
+                .areaId(overviewDTO.getAreaId() != null ? overviewDTO.getAreaId().toString() : null)
                 .series(series)
                 .build();
     }
@@ -133,11 +132,12 @@ public class AdminServiceImpl implements AdminService {
         }
 
         Integer areaId = liveDataDTO.getAreaId();
+        List<Long> scooterIds = resolveAreaScooterIds(areaId);
 
-        Integer todayOrders = rentalOrderMapper.countByDateRange(targetDate, targetDate, areaId);
-        BigDecimal todayRevenue = userBillMapper.sumAmountByDate(targetDate, areaId);
-        Integer onlineScooters = scooterMapper.countByStatus(0);
-        Integer faultScooters = scooterMapper.countByStatus(2);
+        Integer todayOrders = rentalOrderMapper.countByDateRange(targetDate, targetDate, scooterIds);
+        BigDecimal todayRevenue = rentalOrderMapper.sumAmountByDateRange(targetDate, targetDate, scooterIds);
+        Integer onlineScooters = scooterMapper.countByStatus(0, scooterIds);
+        Integer faultScooters = scooterMapper.countByStatus(1, scooterIds);
 
         return LiveDataVO.builder()
                 .updatedAt(java.time.LocalDateTime.now())
@@ -185,12 +185,11 @@ public class AdminServiceImpl implements AdminService {
         int pageSize = packageListDTO.getPageSize() != null ? packageListDTO.getPageSize() : 10;
         int offset = (page - 1) * pageSize;
 
-        String status = packageListDTO.getStatus();
         String keyword = packageListDTO.getKeyword();
 
         // 查询数据
-        List<SubscriptionPackage> packageList = subscriptionPackageMapper.getPackageList(offset, pageSize, status, keyword);
-        Integer total = subscriptionPackageMapper.countPackageList(status, keyword);
+        List<SubscriptionPackage> packageList = subscriptionPackageMapper.getPackageList(offset, pageSize, keyword);
+        Integer total = subscriptionPackageMapper.countPackageList(keyword);
 
         // 转换为 VO
         List<PackageListVO.PackageItem> items = new ArrayList<>();
@@ -202,7 +201,6 @@ public class AdminServiceImpl implements AdminService {
                         .description(pkg.getDescription())
                         .type(pkg.getType())
                         .price(pkg.getPrice())
-                        .status(pkg.getStatus())
                         .createTime(pkg.getCreateTime() != null ? pkg.getCreateTime().toString() : null)
                         .build());
             }
@@ -237,7 +235,6 @@ public class AdminServiceImpl implements AdminService {
         subscriptionPackage.setDescription(addPackageDTO.getDescription());
         subscriptionPackage.setPrice(addPackageDTO.getPrice());
         subscriptionPackage.setType(addPackageDTO.getType() != null ? addPackageDTO.getType() : 1);
-        subscriptionPackage.setStatus(1);  // 默认启用
 
         // 处理创建时间
         if (addPackageDTO.getCreateTime() != null) {
@@ -425,6 +422,164 @@ public class AdminServiceImpl implements AdminService {
             log.warn("解析多边形点数失败", e);
             return 0;
         }
+    }
+
+    private String normalizeGranularity(String granularity) {
+        if (granularity == null || granularity.isBlank()) {
+            return "day";
+        }
+        String normalized = granularity.trim().toLowerCase();
+        if (!"day".equals(normalized) && !"week".equals(normalized) && !"month".equals(normalized)) {
+            throw new BaseException("granularity must be day, week or month");
+        }
+        return normalized;
+    }
+
+    private List<DataOverviewVO.SeriesItem> buildOverviewSeries(LocalDate startDate,
+                                                                LocalDate endDate,
+                                                                String granularity,
+                                                                List<Map<String, Object>> trendResults) {
+        if (startDate.isAfter(endDate)) {
+            throw new BaseException("startDate must be before or equal to endDate");
+        }
+
+        List<String> bucketTimes = new ArrayList<>();
+        Map<String, Integer> orderCountByTime = new HashMap<>();
+        Map<String, BigDecimal> revenueByTime = new HashMap<>();
+        LocalDate cursor = startDate;
+        while (!cursor.isAfter(endDate)) {
+            String time = cursor.toString();
+            bucketTimes.add(time);
+            orderCountByTime.put(time, 0);
+            revenueByTime.put(time, BigDecimal.ZERO);
+            cursor = nextOverviewBucket(cursor, granularity);
+        }
+
+        if (trendResults != null) {
+            for (Map<String, Object> row : trendResults) {
+                Object dateValue = row.get("date");
+                if (dateValue == null) {
+                    continue;
+                }
+                String bucketTime = resolveOverviewBucket(LocalDate.parse(dateValue.toString()), startDate, endDate, granularity);
+                if (bucketTime == null) {
+                    continue;
+                }
+                int orderCount = row.get("order_count") != null ? ((Number) row.get("order_count")).intValue() : 0;
+                BigDecimal revenue = row.get("revenue") != null ? new BigDecimal(row.get("revenue").toString()) : BigDecimal.ZERO;
+                orderCountByTime.put(bucketTime, orderCountByTime.get(bucketTime) + orderCount);
+                revenueByTime.put(bucketTime, revenueByTime.get(bucketTime).add(revenue));
+            }
+        }
+
+        List<DataOverviewVO.SeriesItem> series = new ArrayList<>();
+        for (String time : bucketTimes) {
+            series.add(DataOverviewVO.SeriesItem.builder()
+                    .time(time)
+                    .orderCount(String.valueOf(orderCountByTime.get(time)))
+                    .revenue(revenueByTime.get(time).toString())
+                    .build());
+        }
+        return series;
+    }
+
+    private LocalDate nextOverviewBucket(LocalDate current, String granularity) {
+        if ("week".equals(granularity)) {
+            return current.plusWeeks(1);
+        }
+        if ("month".equals(granularity)) {
+            return current.plusMonths(1);
+        }
+        return current.plusDays(1);
+    }
+
+    private String resolveOverviewBucket(LocalDate date, LocalDate startDate, LocalDate endDate, String granularity) {
+        if (date.isBefore(startDate) || date.isAfter(endDate)) {
+            return null;
+        }
+        LocalDate bucketStart = startDate;
+        if ("day".equals(granularity)) {
+            bucketStart = date;
+        } else if ("week".equals(granularity)) {
+            long days = date.toEpochDay() - startDate.toEpochDay();
+            bucketStart = startDate.plusWeeks(days / 7);
+        } else if ("month".equals(granularity)) {
+            while (!nextOverviewBucket(bucketStart, granularity).isAfter(date)) {
+                bucketStart = nextOverviewBucket(bucketStart, granularity);
+            }
+        }
+        return bucketStart.toString();
+    }
+
+    private List<Long> resolveAreaScooterIds(Integer areaId) {
+        if (areaId == null) {
+            return null;
+        }
+        Area area = areaMapper.getById(areaId.longValue());
+        if (area == null) {
+            throw new BaseException("area not found");
+        }
+        List<List<Double>> polygon = parsePolygon(area.getPolygon());
+        if (polygon.size() < 3) {
+            return new ArrayList<>();
+        }
+
+        return findScootersInPolygon(scooterMapper.listLocated(), polygon);
+    }
+
+    private List<Long> findScootersInPolygon(List<Scooter> scooters, List<List<Double>> polygon) {
+        List<Long> scooterIds = new ArrayList<>();
+        if (scooters == null) {
+            return scooterIds;
+        }
+        for (Scooter scooter : scooters) {
+            if (scooter.getLongitude() == null || scooter.getLatitude() == null) {
+                continue;
+            }
+            double longitude = scooter.getLongitude().doubleValue();
+            double latitude = scooter.getLatitude().doubleValue();
+            if (isPointInPolygon(latitude, longitude, polygon)) {
+                scooterIds.add(scooter.getId());
+            }
+        }
+        return scooterIds;
+    }
+
+    private List<List<Double>> parsePolygon(String polygon) {
+        if (polygon == null || polygon.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(polygon, new TypeReference<List<List<Double>>>() {});
+        } catch (Exception e) {
+            throw new BaseException("invalid area polygon");
+        }
+    }
+
+    private boolean isPointInPolygon(double latitude, double longitude, List<List<Double>> polygon) {
+        boolean inside = false;
+        int pointCount = polygon.size();
+        for (int i = 0, j = pointCount - 1; i < pointCount; j = i++) {
+            List<Double> current = polygon.get(i);
+            List<Double> previous = polygon.get(j);
+            if (current == null || previous == null || current.size() < 2 || previous.size() < 2) {
+                return false;
+            }
+
+            double currentLatitude = current.get(0);
+            double currentLongitude = current.get(1);
+            double previousLatitude = previous.get(0);
+            double previousLongitude = previous.get(1);
+
+            boolean intersects = ((currentLatitude > latitude) != (previousLatitude > latitude))
+                    && (longitude < (previousLongitude - currentLongitude) * (latitude - currentLatitude)
+                    / (previousLatitude - currentLatitude) + currentLongitude);
+            if (intersects) {
+                inside = !inside;
+            }
+        }
+        return inside;
     }
 
     @Override

@@ -85,4 +85,45 @@
         where user_id = #{userId}
     </select>
 
+    <sql id="scooterFilter">
+        <if test="scooterIds != null">
+            <choose>
+                <when test="scooterIds.size() > 0">
+                    and scooter_id in
+                    <foreach collection="scooterIds" item="scooterId" open="(" separator="," close=")">
+                        #{scooterId}
+                    </foreach>
+                </when>
+                <otherwise>
+                    and 1 = 0
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <select id="countByDateRange" resultType="java.lang.Integer">
+        select count(*)
+        from rental_order
+        where date(create_time) between #{startDate} and #{endDate}
+        <include refid="scooterFilter"/>
+    </select>
+
+    <select id="sumAmountByDateRange" resultType="java.math.BigDecimal">
+        select ifnull(sum(amount), 0)
+        from rental_order
+        where date(create_time) between #{startDate} and #{endDate}
+        <include refid="scooterFilter"/>
+    </select>
+
+    <select id="getTrendData" resultType="java.util.Map">
+        select date(create_time) as date,
+               count(*) as order_count,
+               ifnull(sum(amount), 0) as revenue
+        from rental_order
+        where date(create_time) between #{startDate} and #{endDate}
+        <include refid="scooterFilter"/>
+        group by date(create_time)
+        order by date
+    </select>
+
 </mapper>

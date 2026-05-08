@@ -22,7 +22,6 @@ public class PackageListVO {
         private String description;
         private Integer type;
         private BigDecimal price;
-        private Integer status;
         private String createTime;
     }
 }

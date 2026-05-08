@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/admin/princingRule")
+@RequestMapping("/admin/pricingRule")
 @Slf4j
 @RequiredArgsConstructor
 public class PricingRuleController {

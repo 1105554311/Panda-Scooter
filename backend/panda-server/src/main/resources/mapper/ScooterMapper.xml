@@ -28,6 +28,32 @@
         limit 200
     </select>
 
+    <select id="listLocated" resultType="com.panda.entity.Scooter">
+        select id, code, battery, latitude, longitude, ride_status, fault_status, create_time
+        from scooter
+        where longitude is not null
+          and latitude is not null
+    </select>
+
+    <select id="countByStatus" resultType="java.lang.Integer">
+        select count(*)
+        from scooter
+        where fault_status = #{status}
+        <if test="scooterIds != null">
+            <choose>
+                <when test="scooterIds.size() > 0">
+                    and id in
+                    <foreach collection="scooterIds" item="scooterId" open="(" separator="," close=")">
+                        #{scooterId}
+                    </foreach>
+                </when>
+                <otherwise>
+                    and 1 = 0
+                </otherwise>
+            </choose>
+        </if>
+    </select>
+
     <update id="updateRideStatus">
         update scooter
         set ride_status = #{rideStatus}

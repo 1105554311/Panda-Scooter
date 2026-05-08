@@ -20,6 +20,8 @@ public interface ScooterMapper {
                              @Param("minLatitude") BigDecimal minLatitude,
                              @Param("maxLatitude") BigDecimal maxLatitude);
 
+    List<Scooter> listLocated();
+
     int updateRideStatus(@Param("id") Long id, @Param("rideStatus") Integer rideStatus);
 
     int updateStatusAndLocation(@Param("id") Long id,
@@ -39,6 +41,6 @@ public interface ScooterMapper {
      * 根据状态统计车辆数量
      * @param status 0-空闲, 1-使用中, 2-故障
      */
-    @Select("SELECT COUNT(*) FROM scooter WHERE fault_status = #{status}")
-    Integer countByStatus(@Param("status") Integer status);
+    Integer countByStatus(@Param("status") Integer status,
+                          @Param("scooterIds") List<Long> scooterIds);
 }

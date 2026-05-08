@@ -10,7 +10,7 @@ public class DataOverviewVO {
     private String startDate;
     private String endDate;
     private String granularity;
-    private String areaID;
+    private String areaId;
     private List<SeriesItem> series;
 
     @Data
