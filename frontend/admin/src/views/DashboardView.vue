@@ -244,11 +244,7 @@ onMounted(async () => {
       </div>
 
       <div class="vehicle-grid">
-        <article
-          v-for="item in vehicleCards"
-          :key="item.key"
-          class="vehicle-card"
-        >
+        <article v-for="item in vehicleCards" :key="item.key" class="vehicle-card">
           <div class="vehicle-card-header">
             <div>
               <span class="vehicle-card-kicker">区域 #{{ item.areaId }}</span>

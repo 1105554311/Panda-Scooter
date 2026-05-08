@@ -7,8 +7,6 @@ import lombok.Data;
 @AllArgsConstructor
 public class ScooterCommandMessage {
 
-    private String commandId;
-
     private String command;
 
     private Long orderId;

@@ -13,6 +13,7 @@ const uiStore = useUiStore()
 
 const navItems = [
   { label: '数据概览', to: { name: 'dashboard' } },
+  { label: '车辆管理', to: { name: 'vehicles' } },
   { label: '定价管理', to: { name: 'pricing' } },
   { label: '套餐管理', to: { name: 'packages' } },
   { label: '片区管理', to: { name: 'zones' } },

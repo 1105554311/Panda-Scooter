@@ -9,6 +9,7 @@ import PackagesView from '@/views/PackagesView.vue'
 import ParkingPointEditorView from '@/views/ParkingPointEditorView.vue'
 import ParkingPointsView from '@/views/ParkingPointsView.vue'
 import PricingView from '@/views/PricingView.vue'
+import VehicleManagementView from '@/views/VehicleManagementView.vue'
 import ZoneDetailView from '@/views/ZoneDetailView.vue'
 import ZoneEditorView from '@/views/ZoneEditorView.vue'
 import ZonesView from '@/views/ZonesView.vue'
@@ -45,6 +46,14 @@ const router = createRouter({
           component: DashboardView,
           meta: {
             title: '数据概览'
+          }
+        },
+        {
+          path: 'vehicles',
+          name: 'vehicles',
+          component: VehicleManagementView,
+          meta: {
+            title: '车辆管理'
           }
         },
         {

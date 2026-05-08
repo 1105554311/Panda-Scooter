@@ -21,6 +21,9 @@ server:
   port: 8080
 
 panda:
+  amap:
+    key: 41c02ed4a74387d6fe95299cb7adb8f4
+    secret: b1a8779ea28e6241db16882c059e9233
   jwt:
     secret-key: 12345678901234567890123456789012
     ttl: 604800000

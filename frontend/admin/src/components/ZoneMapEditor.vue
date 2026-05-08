@@ -88,7 +88,7 @@ const getPointLongitude = (point) => {
     return Number(point.getLng())
   }
 
-  return Number(point?.lng ?? point?.longitude)
+  return Number(point?.lng ?? point?.longitude ?? point?.x)
 }
 
 const getPointLatitude = (point) => {
@@ -96,7 +96,7 @@ const getPointLatitude = (point) => {
     return Number(point.getLat())
   }
 
-  return Number(point?.lat ?? point?.latitude)
+  return Number(point?.lat ?? point?.latitude ?? point?.y)
 }
 
 const getPolygonPathPoints = (polygonInstance) => {
@@ -175,6 +175,7 @@ const validateAndEmit = (points, shouldEmit = true) => {
   if (!validation.valid) {
     statusMessage.value = validation.errors[0] || '当前边界无效。'
   } else if (!props.readonly) {
+    validationErrors.value = []
     statusMessage.value = editorEnabled.value
       ? '已进入顶点编辑，可直接拖动、加点或删点。'
       : '边界已生成，可继续编辑顶点，或重新绘制。'
