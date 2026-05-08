@@ -1,5 +1,6 @@
 package com.panda.config;
 
+import com.panda.interceptor.JwtTokenAdminInterceptor;
 import com.panda.interceptor.JwtTokenUserInterceptor;
 import com.panda.interceptor.JwtTokenDispatcherInterceptor;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
 
     private final JwtTokenUserInterceptor jwtTokenUserInterceptor;
     private final JwtTokenDispatcherInterceptor jwtTokenDispatcherInterceptor;
+    private final JwtTokenAdminInterceptor jwtTokenAdminInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -34,6 +36,16 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
                         "/dispatcher/user/signin",
                         "/dispatcher/user/login",
                         "/dispatcher/user/verification",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html",
+                        "/error"
+                );
+
+        registry.addInterceptor(jwtTokenAdminInterceptor)
+                .addPathPatterns("/admin/**")
+                .excludePathPatterns(
+                        "/admin/log/login",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
