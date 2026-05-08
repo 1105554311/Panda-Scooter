@@ -1,0 +1,43 @@
+package com.panda.interceptor;
+
+import com.panda.context.BaseContext;
+import com.panda.exception.BaseException;
+import com.panda.properties.JwtProperties;
+import com.panda.utils.JwtUtil;
+import io.jsonwebtoken.Claims;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+@Component
+@RequiredArgsConstructor
+public class JwtTokenAdminInterceptor implements HandlerInterceptor {
+
+    private final JwtProperties jwtProperties;
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        String token = request.getHeader("token");
+        if (token == null || token.isBlank()) {
+            throw new BaseException("未登录");
+        }
+        if (token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        }
+        try {
+            Claims claims = JwtUtil.parseJWT(jwtProperties.getSecretKey(), token);
+            Long adminId = Long.valueOf(claims.get("adminId").toString());
+            BaseContext.setCurrentId(adminId);
+            return true;
+        } catch (Exception e) {
+            throw new BaseException("登录已失效，请重新登录");
+        }
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        BaseContext.removeCurrentId();
+    }
+}
