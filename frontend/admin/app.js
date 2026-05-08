@@ -9,6 +9,7 @@
 
   const DEFAULT_API_BASE_URL = 'http://localhost:8080';
   const API_TIMEOUT_MS = 12000;
+  const PROTECTED_VIEWS = new Set(['overview', 'pricing', 'packages', 'zones', 'dispatchers']);
 
   const appState = {
     currentView: 'login',
@@ -34,6 +35,7 @@
 
   const dom = {};
   let overviewChart = null;
+  let authFailureNotified = false;
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -43,7 +45,8 @@
     bindGlobalEvents();
     renderAuthSummary();
     updateApiStatus('未检查', 'muted');
-    setActiveView('login');
+    const initialView = hasAuthToken() ? 'overview' : 'login';
+    setActiveView(initialView);
   }
 
   function cacheDom() {
@@ -192,7 +195,14 @@
     });
   }
 
-  function setActiveView(viewKey) {
+  function setActiveView(viewKey, options) {
+    const opts = options || {};
+    if (!opts.skipAuthCheck && isProtectedView(viewKey) && !hasAuthToken()) {
+      notify('请先登录后台账号', 'error');
+      setActiveView('login', { skipAuthCheck: true });
+      return;
+    }
+
     appState.currentView = viewKey;
 
     dom.menuItems.forEach((item) => {
@@ -240,7 +250,7 @@
     dom.pingApiBtn.disabled = true;
     updateApiStatus('检查中...', 'muted');
     try {
-      await api.log.logout();
+      await probeApiConnection();
       updateApiStatus('可访问', 'success');
       notify('API 连通成功', 'success');
     } catch (error) {
@@ -264,6 +274,9 @@
     try {
       const data = await api.log.login({ email, password });
       appState.authState.token = data.token || '';
+      if (!appState.authState.token) {
+        throw new Error('登录成功但未返回 token');
+      }
       appState.authState.user = {
         id: data.id || '',
         username: data.username || '',
@@ -272,6 +285,7 @@
       localStorage.setItem(STORAGE_KEYS.token, appState.authState.token);
       localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(appState.authState.user));
       renderAuthSummary();
+      setActiveView('overview');
       notify('登录成功', 'success');
     } catch (error) {
       notify(resolveErrorMessage(error), 'error');
@@ -287,11 +301,9 @@
       // ignore
     }
 
-    appState.authState.token = '';
-    appState.authState.user = null;
-    localStorage.removeItem(STORAGE_KEYS.token);
-    localStorage.removeItem(STORAGE_KEYS.user);
+    clearAdminSession();
     renderAuthSummary();
+    setActiveView('login', { skipAuthCheck: true });
     notify('已退出登录', 'success');
   }
 
@@ -299,6 +311,10 @@
     if (appState.authState.user) {
       const user = appState.authState.user;
       dom.authUserText.textContent = `${user.username || '管理员'} (${user.email || '-'})`;
+      return;
+    }
+    if (hasAuthToken()) {
+      dom.authUserText.textContent = '已登录';
       return;
     }
     dom.authUserText.textContent = '未登录';
@@ -1042,6 +1058,63 @@
     return url.toString();
   }
 
+  function hasAuthToken() {
+    return Boolean(appState.authState.token);
+  }
+
+  function isProtectedView(viewKey) {
+    return PROTECTED_VIEWS.has(viewKey);
+  }
+
+  function clearAdminSession() {
+    appState.authState.token = '';
+    appState.authState.user = null;
+    localStorage.removeItem(STORAGE_KEYS.token);
+    localStorage.removeItem(STORAGE_KEYS.user);
+  }
+
+  function isAuthFailure(status, message) {
+    if (status === 401 || status === 403) {
+      return true;
+    }
+    const msg = String(message || '');
+    return msg.includes('未登录') || msg.includes('登录已失效');
+  }
+
+  function handleAuthFailure(message) {
+    const hadSession = hasAuthToken();
+    clearAdminSession();
+    renderAuthSummary();
+    setActiveView('login', { skipAuthCheck: true });
+
+    if (hadSession && !authFailureNotified) {
+      authFailureNotified = true;
+      notify(message || '登录已失效，请重新登录', 'error');
+      setTimeout(() => {
+        authFailureNotified = false;
+      }, 800);
+    }
+  }
+
+  async function probeApiConnection() {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+    try {
+      await fetch(buildUrl('/admin/log/login'), {
+        method: 'GET',
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        throw new Error('请求超时，请检查后端服务');
+      }
+      throw new Error('网络请求失败，请检查 API 地址和后端服务');
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   async function request(path, options) {
     const config = options || {};
     const controller = new AbortController();
@@ -1052,8 +1125,8 @@
       ...(config.headers || {})
     };
 
-    if (appState.authState.token) {
-      headers.Authorization = `Bearer ${appState.authState.token}`;
+    if (hasAuthToken() && config.auth !== false) {
+      headers.token = appState.authState.token;
     }
 
     let response;
@@ -1073,27 +1146,39 @@
     }
     clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      throw new Error(`请求失败: HTTP ${response.status}`);
-    }
-
     let payload = null;
     try {
       payload = await response.json();
     } catch (error) {
+      payload = null;
+    }
+
+    const message = payload ? (payload.msg || payload.message || '') : '';
+    const code = payload ? String(payload.code) : '';
+    const businessFailed = Boolean(payload) && code !== '0' && code !== '200';
+
+    if (isAuthFailure(response.status, message)) {
+      handleAuthFailure(message);
+    }
+
+    if (!response.ok) {
+      throw new Error(message || `请求失败: HTTP ${response.status}`);
+    }
+
+    if (!payload) {
       throw new Error('服务返回内容不是有效 JSON');
     }
 
-    if (payload && String(payload.code) !== '0' && String(payload.code) !== '200') {
-      throw new Error(payload.msg || payload.message || '后端返回错误');
+    if (businessFailed) {
+      throw new Error(message || '后端返回错误');
     }
 
-    return payload ? payload.data : null;
+    return payload.data;
   }
 
   const api = {
     log: {
-      login: (body) => request('/admin/log/login', { method: 'POST', body }),
+      login: (body) => request('/admin/log/login', { method: 'POST', body, auth: false }),
       logout: () => request('/admin/log/logout', { method: 'POST' })
     },
     data: {
