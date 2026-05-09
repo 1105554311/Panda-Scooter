@@ -1,8 +1,16 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import MapLayerToggleBar from '@/components/MapLayerToggleBar.vue'
 import PointMapPicker from '@/components/PointMapPicker.vue'
 import { addParkingPoint, editParkingPoint, getParkingPointList } from '@/api'
+import {
+  ALL_MAP_LAYERS,
+  MAP_LAYER_NO_PARKING,
+  MAP_LAYER_PARKING_POINT,
+  MAP_LAYER_SCOOTER,
+  MAP_LAYER_ZONE
+} from '@/utils/adminMapVisuals'
 import { useUiStore } from '@/stores/ui'
 import { getEditorCache, removeEditorCache } from '@/utils/editorCache'
 import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
@@ -21,6 +29,7 @@ const zones = ref([])
 const noParkingZones = ref([])
 const scooters = ref([])
 const allParkingPoints = ref([])
+const visibleTypes = ref([MAP_LAYER_PARKING_POINT])
 const form = ref({
   id: '',
   name: '',
@@ -183,6 +192,7 @@ const submit = async () => {
 
 onMounted(async () => {
   loading.value = true
+  visibleTypes.value = ALL_MAP_LAYERS.filter((item) => item === MAP_LAYER_PARKING_POINT)
   await Promise.all([fetchPoints(), fetchMapLayers()])
 
   if (!hydrateEditData()) {
@@ -246,9 +256,12 @@ onMounted(async () => {
             :scooters="scooters"
             :parking-points="parkingPointsForMap"
             :active-parking-point-id="form.id"
+            :visible-types="visibleTypes"
             :readonly="false"
             :height="560"
           />
+
+          <MapLayerToggleBar v-model="visibleTypes" :self-layer="MAP_LAYER_PARKING_POINT" />
         </section>
       </div>
     </section>
@@ -301,6 +314,11 @@ onMounted(async () => {
   margin-top: 8px;
   font-size: 18px;
   font-weight: 400;
+}
+
+.map-panel {
+  display: grid;
+  gap: 12px;
 }
 
 @media (max-width: 1080px) {

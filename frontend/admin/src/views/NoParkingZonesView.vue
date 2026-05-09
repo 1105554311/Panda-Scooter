@@ -6,7 +6,8 @@ import { deleteNoParkingZone, getNoParkingZoneList } from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { formatBinaryStatus, formatDateTime } from '@/utils/format'
 import { setEditorCache } from '@/utils/editorCache'
-import { countPolygonPoints, getPolygonCenter } from '@/utils/polygon'
+import { countPolygonPoints } from '@/utils/polygon'
+import { formatLatLngCenterTextFromRawPolygon } from '@/utils/noParkingPolygon'
 
 const router = useRouter()
 const uiStore = useUiStore()
@@ -27,12 +28,7 @@ const enabledCount = computed(() => zones.value.filter((item) => Number(item.sta
 const disabledCount = computed(() => zones.value.filter((item) => Number(item.status) === 0).length)
 
 const formatCenterText = (polygon) => {
-  const center = getPolygonCenter(polygon)
-  if (!center) {
-    return '--'
-  }
-
-  return `${center.longitude.toFixed(5)}, ${center.latitude.toFixed(5)}`
+  return formatLatLngCenterTextFromRawPolygon(polygon)
 }
 
 const fetchZones = async () => {

@@ -1,7 +1,18 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isAmapConfigured, loadAmap } from '@/utils/amap'
-import { parsePolygonPoints } from '@/utils/polygon'
+import {
+  ALL_MAP_LAYERS,
+  MAP_ICON_PATHS,
+  MAP_ICON_SIZE,
+  MAP_LAYER_NO_PARKING,
+  MAP_LAYER_PARKING_POINT,
+  MAP_LAYER_SCOOTER,
+  MAP_LAYER_ZONE,
+  buildIconMarkerContent,
+  isLayerVisible
+} from '@/utils/adminMapVisuals'
+import { toNoParkingAmapPath, toZoneAmapPath } from '@/utils/noParkingPolygon'
 
 const DEFAULT_CENTER = [103.99015677941316, 30.762680478785253]
 const DEFAULT_ZOOM = 14
@@ -43,6 +54,10 @@ const props = defineProps({
     type: [String, Number],
     default: ''
   },
+  visibleTypes: {
+    type: Array,
+    default: () => ALL_MAP_LAYERS.slice()
+  },
   height: {
     type: Number,
     default: 500
@@ -61,6 +76,7 @@ let scooterMarkers = []
 let zoneOverlays = []
 let noParkingOverlays = []
 let parkingPointMarkers = []
+let noParkingMarkers = []
 let mapResizeObserver = null
 
 const mapHeightStyle = computed(() => ({
@@ -72,16 +88,22 @@ const configHint = computed(() => {
     return ''
   }
 
-  return '请在 admin 环境变量中配置 VITE_AMAP_WEB_KEY。如控制台要求安全密钥，请同时配置 VITE_AMAP_SECURITY_JS_CODE。'
+  return '请在 admin 环境变量中配置 VITE_AMAP_WEB_KEY。若控制台要求安全密钥，请同时配置 VITE_AMAP_SECURITY_JS_CODE。'
 })
 
 const hasMappableContent = computed(() => {
-  const hasScooters = props.scooters.some((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
-  const hasZones = props.zones.some((item) => parsePolygonPoints(item.polygon).length >= 3)
-  const hasNoParkingZones = props.noParkingZones.some((item) => parsePolygonPoints(item.polygon).length >= 3)
-  const hasParkingPoints = props.parkingPoints.some(
-    (item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude)
-  )
+  const hasScooters =
+    isLayerVisible(props.visibleTypes, MAP_LAYER_SCOOTER)
+    && props.scooters.some((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
+  const hasZones =
+    isLayerVisible(props.visibleTypes, MAP_LAYER_ZONE)
+    && props.zones.some((item) => parsePolygonPoints(item.polygon).length >= 3)
+  const hasNoParkingZones =
+    isLayerVisible(props.visibleTypes, MAP_LAYER_NO_PARKING)
+    && props.noParkingZones.some((item) => parsePolygonPoints(item.polygon).length >= 3)
+  const hasParkingPoints =
+    isLayerVisible(props.visibleTypes, MAP_LAYER_PARKING_POINT)
+    && props.parkingPoints.some((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
 
   return hasScooters || hasZones || hasNoParkingZones || hasParkingPoints
 })
@@ -93,33 +115,6 @@ const clearOverlayList = (overlayListRef) => {
 
   map.remove(overlayListRef)
   return []
-}
-
-const getScooterStyle = (scooter, active) => {
-  if (active) {
-    return {
-      radius: 8,
-      fillColor: '#0b0e0d',
-      strokeColor: '#ffffff',
-      strokeWeight: 2
-    }
-  }
-
-  if (Number(scooter.faultStatus) === 1) {
-    return {
-      radius: 7,
-      fillColor: '#8f3a2d',
-      strokeColor: '#ffffff',
-      strokeWeight: 2
-    }
-  }
-
-  return {
-    radius: 7,
-    fillColor: '#2f6f46',
-    strokeColor: '#ffffff',
-    strokeWeight: 2
-  }
 }
 
 const getZoneStyle = (active) => {
@@ -164,16 +159,84 @@ const getNoParkingStyle = (active) => {
   }
 }
 
+const createIconMarker = ({ position, iconType, active = false, badgeColor = '', zIndex = 250 }) => {
+  const size = MAP_ICON_SIZE[iconType]
+  const width = active ? size.activeWidth : size.width
+  const height = active ? size.activeHeight : size.height
+
+  return new AMap.Marker({
+    position,
+    content: buildIconMarkerContent({
+      src: MAP_ICON_PATHS[iconType],
+      width,
+      height,
+      badgeColor
+    }),
+    offset: new AMap.Pixel(Math.round(-width / 2), Math.round(-height / 2)),
+    zIndex,
+    bubble: true
+  })
+}
+
+const resolvePolygonCenter = (item, path) => {
+  const center = item?.center
+  if (center) {
+    if (Array.isArray(center) && center.length >= 2) {
+      const first = Number(center[0])
+      const second = Number(center[1])
+      if (Number.isFinite(first) && Number.isFinite(second)) {
+        if (Math.abs(first) <= 90 && Math.abs(second) <= 180) {
+          return [second, first]
+        }
+        return [first, second]
+      }
+    } else if (typeof center === 'string') {
+      const values = center.split(',').map((segment) => Number(segment.trim()))
+      if (values.length >= 2 && Number.isFinite(values[0]) && Number.isFinite(values[1])) {
+        if (Math.abs(values[0]) <= 90 && Math.abs(values[1]) <= 180) {
+          return [values[1], values[0]]
+        }
+        return [values[0], values[1]]
+      }
+    } else if (typeof center === 'object') {
+      const latitude = Number(center.latitude)
+      const longitude = Number(center.longitude)
+      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        return [longitude, latitude]
+      }
+    }
+  }
+
+  if (!Array.isArray(path) || !path.length) {
+    return null
+  }
+
+  const total = path.reduce(
+    (result, point) => {
+      return {
+        longitude: result.longitude + Number(point[0]),
+        latitude: result.latitude + Number(point[1])
+      }
+    },
+    { longitude: 0, latitude: 0 }
+  )
+
+  return [total.longitude / path.length, total.latitude / path.length]
+}
+
 const renderZoneOverlays = () => {
   if (!map || !AMap) {
     return
   }
 
   zoneOverlays = clearOverlayList(zoneOverlays)
+  if (!isLayerVisible(props.visibleTypes, MAP_LAYER_ZONE)) {
+    return
+  }
 
   zoneOverlays = props.zones
     .map((item) => {
-      const path = parsePolygonPoints(item.polygon).map((point) => [point.longitude, point.latitude])
+      const path = toZoneAmapPath(item.polygon)
       if (path.length < 3) {
         return null
       }
@@ -187,7 +250,7 @@ const renderZoneOverlays = () => {
 
       polygon.on('click', () => {
         emit('select', {
-          type: 'zone',
+          type: MAP_LAYER_ZONE,
           item
         })
       })
@@ -207,10 +270,13 @@ const renderNoParkingOverlays = () => {
   }
 
   noParkingOverlays = clearOverlayList(noParkingOverlays)
+  if (!isLayerVisible(props.visibleTypes, MAP_LAYER_NO_PARKING)) {
+    return
+  }
 
   noParkingOverlays = props.noParkingZones
     .map((item) => {
-      const path = parsePolygonPoints(item.polygon).map((point) => [point.longitude, point.latitude])
+      const path = toNoParkingAmapPath(item.polygon)
       if (path.length < 3) {
         return null
       }
@@ -224,7 +290,7 @@ const renderNoParkingOverlays = () => {
 
       polygon.on('click', () => {
         emit('select', {
-          type: 'noParkingZone',
+          type: MAP_LAYER_NO_PARKING,
           item
         })
       })
@@ -238,32 +304,76 @@ const renderNoParkingOverlays = () => {
   }
 }
 
+const renderNoParkingMarkers = () => {
+  if (!map || !AMap) {
+    return
+  }
+
+  noParkingMarkers = clearOverlayList(noParkingMarkers)
+  if (!isLayerVisible(props.visibleTypes, MAP_LAYER_NO_PARKING)) {
+    return
+  }
+
+  noParkingMarkers = props.noParkingZones
+    .map((item) => {
+      const path = toNoParkingAmapPath(item.polygon)
+      if (path.length < 3) {
+        return null
+      }
+
+      const active = String(item.id) === String(props.selectedNoParkingZoneId || '')
+      const center = resolvePolygonCenter(item, path)
+      if (!center) {
+        return null
+      }
+
+      const marker = createIconMarker({
+        position: center,
+        iconType: 'noParkingZone',
+        active,
+        zIndex: active ? 280 : 270
+      })
+
+      marker.on('click', () => {
+        emit('select', {
+          type: MAP_LAYER_NO_PARKING,
+          item
+        })
+      })
+
+      return marker
+    })
+    .filter(Boolean)
+
+  if (noParkingMarkers.length) {
+    map.add(noParkingMarkers)
+  }
+}
+
 const renderParkingPointMarkers = () => {
   if (!map || !AMap) {
     return
   }
 
   parkingPointMarkers = clearOverlayList(parkingPointMarkers)
+  if (!isLayerVisible(props.visibleTypes, MAP_LAYER_PARKING_POINT)) {
+    return
+  }
 
   parkingPointMarkers = props.parkingPoints
     .filter((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
     .map((item) => {
       const active = String(item.id) === String(props.selectedParkingPointId || '')
-      const marker = new AMap.CircleMarker({
-        center: [item.longitude, item.latitude],
-        radius: active ? 8 : 6,
-        strokeColor: '#2b2b2b',
-        strokeWeight: active ? 3 : 2,
-        strokeOpacity: 1,
-        fillColor: '#f8d65c',
-        fillOpacity: 1,
-        zIndex: active ? 250 : 240,
-        bubble: true
+      const marker = createIconMarker({
+        position: [item.longitude, item.latitude],
+        iconType: 'parkingPoint',
+        active,
+        zIndex: active ? 290 : 250
       })
 
       marker.on('click', () => {
         emit('select', {
-          type: 'parkingPoint',
+          type: MAP_LAYER_PARKING_POINT,
           item
         })
       })
@@ -282,21 +392,25 @@ const renderScooters = () => {
   }
 
   scooterMarkers = clearOverlayList(scooterMarkers)
+  if (!isLayerVisible(props.visibleTypes, MAP_LAYER_SCOOTER)) {
+    return
+  }
 
   scooterMarkers = props.scooters
     .filter((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
     .map((item) => {
       const active = String(item.id) === String(props.selectedScooterId || '')
-      const marker = new AMap.CircleMarker({
-        center: [item.longitude, item.latitude],
-        zIndex: active ? 270 : 260,
-        bubble: true,
-        ...getScooterStyle(item, active)
+      const marker = createIconMarker({
+        position: [item.longitude, item.latitude],
+        iconType: 'scooter',
+        active,
+        badgeColor: Number(item.faultStatus) === 1 ? '#d50000' : '',
+        zIndex: active ? 300 : 260
       })
 
       marker.on('click', () => {
         emit('select', {
-          type: 'scooter',
+          type: MAP_LAYER_SCOOTER,
           item
         })
       })
@@ -310,7 +424,7 @@ const renderScooters = () => {
 }
 
 const focusZone = () => {
-  if (!map || !props.focusZoneId) {
+  if (!map || !props.focusZoneId || !isLayerVisible(props.visibleTypes, MAP_LAYER_ZONE)) {
     return false
   }
 
@@ -319,7 +433,7 @@ const focusZone = () => {
     return false
   }
 
-  const path = parsePolygonPoints(target.polygon).map((point) => [point.longitude, point.latitude])
+  const path = toZoneAmapPath(target.polygon)
   if (path.length < 3 || !AMap) {
     return false
   }
@@ -334,7 +448,13 @@ const fitViewToAll = () => {
     return
   }
 
-  const overlays = [...zoneOverlays, ...noParkingOverlays, ...scooterMarkers, ...parkingPointMarkers].filter(Boolean)
+  const overlays = [
+    ...zoneOverlays,
+    ...noParkingOverlays,
+    ...noParkingMarkers,
+    ...scooterMarkers,
+    ...parkingPointMarkers
+  ].filter(Boolean)
 
   if (!overlays.length) {
     map.setZoomAndCenter(DEFAULT_ZOOM, DEFAULT_CENTER)
@@ -347,6 +467,7 @@ const fitViewToAll = () => {
 const renderMapData = ({ fitView = true } = {}) => {
   renderZoneOverlays()
   renderNoParkingOverlays()
+  renderNoParkingMarkers()
   renderParkingPointMarkers()
   renderScooters()
 
@@ -410,6 +531,7 @@ const destroyMap = () => {
   zoneOverlays = clearOverlayList(zoneOverlays)
   noParkingOverlays = clearOverlayList(noParkingOverlays)
   parkingPointMarkers = clearOverlayList(parkingPointMarkers)
+  noParkingMarkers = clearOverlayList(noParkingMarkers)
 
   if (map && typeof map.destroy === 'function') {
     map.destroy()
@@ -420,7 +542,7 @@ const destroyMap = () => {
 }
 
 watch(
-  () => [props.scooters, props.zones, props.noParkingZones, props.parkingPoints],
+  () => [props.scooters, props.zones, props.noParkingZones, props.parkingPoints, props.visibleTypes],
   () => {
     if (!map || !AMap) {
       return

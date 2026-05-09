@@ -1,12 +1,25 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import MapLayerToggleBar from '@/components/MapLayerToggleBar.vue'
 import ZoneMapEditor from '@/components/ZoneMapEditor.vue'
 import { addZone, editZone, getDispatcherList, getZoneDetail } from '@/api'
+import {
+  ALL_MAP_LAYERS,
+  MAP_LAYER_NO_PARKING,
+  MAP_LAYER_PARKING_POINT,
+  MAP_LAYER_SCOOTER,
+  MAP_LAYER_ZONE
+} from '@/utils/adminMapVisuals'
 import { useUiStore } from '@/stores/ui'
 import { getEditorCache, removeEditorCache } from '@/utils/editorCache'
 import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
-import { formatPolygonPoints, getPolygonCenter, validatePolygonPoints } from '@/utils/polygon'
+import { validatePolygonPoints } from '@/utils/polygon'
+import {
+  formatLatLngCenterTextFromCanonicalPolygon,
+  formatZonePolygonForApi,
+  normalizeZonePolygonForEditor
+} from '@/utils/noParkingPolygon'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +35,7 @@ const zones = ref([])
 const noParkingZones = ref([])
 const scooters = ref([])
 const parkingPoints = ref([])
+const visibleTypes = ref([MAP_LAYER_ZONE])
 const form = ref({
   id: '',
   name: '',
@@ -38,12 +52,7 @@ const pointCount = computed(() => {
 })
 
 const polygonCenterText = computed(() => {
-  const center = getPolygonCenter(form.value.polygon)
-  if (!center) {
-    return '--'
-  }
-
-  return `${center.longitude.toFixed(5)}, ${center.latitude.toFixed(5)}`
+  return formatLatLngCenterTextFromCanonicalPolygon(form.value.polygon)
 })
 
 const pageTitle = computed(() => (editing.value ? '编辑片区' : '新增片区'))
@@ -52,7 +61,7 @@ const applyRecord = (item) => {
   form.value = {
     id: item.id,
     name: item.name || '',
-    polygon: item.polygon ? formatPolygonPoints(item.polygon) : '',
+    polygon: item.polygon ? normalizeZonePolygonForEditor(item.polygon) : '',
     dispatcherId: item.dispatcher?.id ? String(item.dispatcher.id) : ''
   }
 }
@@ -156,7 +165,7 @@ const submit = async () => {
   try {
     const payload = {
       name: form.value.name.trim(),
-      polygon: formatPolygonPoints(validation.points),
+      polygon: formatZonePolygonForApi(validation.points),
       dispatcherId: form.value.dispatcherId ? Number(form.value.dispatcherId) : undefined
     }
 
@@ -184,6 +193,7 @@ const submit = async () => {
 
 onMounted(async () => {
   loading.value = true
+  visibleTypes.value = ALL_MAP_LAYERS.filter((item) => item === MAP_LAYER_ZONE)
   await Promise.all([fetchMapLayers(), fetchDispatchers()])
 
   if (editing.value) {
@@ -269,9 +279,12 @@ onMounted(async () => {
             :scooters="scooters"
             :parking-points="parkingPoints"
             :active-zone-id="form.id"
+            :visible-types="visibleTypes"
             :readonly="false"
             :height="560"
           />
+
+          <MapLayerToggleBar v-model="visibleTypes" :self-layer="MAP_LAYER_ZONE" />
         </section>
       </div>
     </section>
@@ -324,6 +337,11 @@ onMounted(async () => {
   margin-top: 8px;
   font-size: 18px;
   font-weight: 400;
+}
+
+.map-panel {
+  display: grid;
+  gap: 12px;
 }
 
 @media (max-width: 1080px) {

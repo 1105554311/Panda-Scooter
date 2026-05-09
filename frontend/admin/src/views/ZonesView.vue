@@ -6,7 +6,8 @@ import { deleteZone, getDispatcherList, getZoneList } from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { formatDateTime } from '@/utils/format'
 import { setEditorCache } from '@/utils/editorCache'
-import { countPolygonPoints, getPolygonCenter } from '@/utils/polygon'
+import { countPolygonPoints } from '@/utils/polygon'
+import { formatLatLngCenterTextFromRawPolygon } from '@/utils/noParkingPolygon'
 
 const router = useRouter()
 const uiStore = useUiStore()
@@ -38,12 +39,7 @@ const assignedZoneCount = computed(() => {
 })
 
 const formatCenterText = (polygon) => {
-  const center = getPolygonCenter(polygon)
-  if (!center) {
-    return '--'
-  }
-
-  return `${center.longitude.toFixed(5)}, ${center.latitude.toFixed(5)}`
+  return formatLatLngCenterTextFromRawPolygon(polygon)
 }
 
 const fetchDispatchers = async () => {

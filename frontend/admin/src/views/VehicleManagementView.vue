@@ -2,13 +2,21 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ScooterMapPreview from '@/components/ScooterMapPreview.vue'
+import {
+  ALL_MAP_LAYERS,
+  MAP_LAYER_NO_PARKING,
+  MAP_LAYER_PARKING_POINT,
+  MAP_LAYER_SCOOTER,
+  MAP_LAYER_ZONE
+} from '@/utils/adminMapVisuals'
 import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 import { formatBinaryStatus, formatDateTime, formatNumber } from '@/utils/format'
 
-const TYPE_ZONE = 'zone'
-const TYPE_NO_PARKING = 'noParkingZone'
-const TYPE_PARKING_POINT = 'parkingPoint'
-const TYPE_SCOOTER = 'scooter'
+const TYPE_ALL = 'all'
+const TYPE_ZONE = MAP_LAYER_ZONE
+const TYPE_NO_PARKING = MAP_LAYER_NO_PARKING
+const TYPE_PARKING_POINT = MAP_LAYER_PARKING_POINT
+const TYPE_SCOOTER = MAP_LAYER_SCOOTER
 
 const router = useRouter()
 
@@ -20,7 +28,7 @@ const layers = ref({
   parkingPoints: []
 })
 
-const selectedType = ref(TYPE_ZONE)
+const selectedType = ref(TYPE_ALL)
 const selectedIdByType = ref({
   [TYPE_ZONE]: '',
   [TYPE_NO_PARKING]: '',
@@ -28,8 +36,12 @@ const selectedIdByType = ref({
   [TYPE_SCOOTER]: ''
 })
 const selectedDetail = ref(null)
+let skipTypeResetOnce = false
+
+const isAllType = computed(() => selectedType.value === TYPE_ALL)
 
 const typeOptions = [
+  { value: TYPE_ALL, label: '全部' },
   { value: TYPE_ZONE, label: '片区' },
   { value: TYPE_NO_PARKING, label: '禁停区' },
   { value: TYPE_PARKING_POINT, label: '停车点' },
@@ -37,6 +49,7 @@ const typeOptions = [
 ]
 
 const typeNameMap = {
+  [TYPE_ALL]: '全部对象',
   [TYPE_ZONE]: '片区',
   [TYPE_NO_PARKING]: '禁停区',
   [TYPE_PARKING_POINT]: '停车点',
@@ -50,6 +63,13 @@ const allOptionLabelMap = {
   [TYPE_SCOOTER]: '全部车辆'
 }
 
+const visibleTypes = computed(() => {
+  if (isAllType.value) {
+    return ALL_MAP_LAYERS.slice()
+  }
+  return [selectedType.value]
+})
+
 const itemListByType = computed(() => {
   return {
     [TYPE_ZONE]: layers.value.zones,
@@ -59,11 +79,22 @@ const itemListByType = computed(() => {
   }
 })
 
-const currentList = computed(() => itemListByType.value[selectedType.value] || [])
-const currentSelectedId = computed(() => selectedIdByType.value[selectedType.value] || '')
+const currentList = computed(() => {
+  if (isAllType.value) {
+    return []
+  }
+  return itemListByType.value[selectedType.value] || []
+})
+
+const currentSelectedId = computed(() => {
+  if (isAllType.value) {
+    return ''
+  }
+  return selectedIdByType.value[selectedType.value] || ''
+})
 
 const currentSelectedItem = computed(() => {
-  if (!currentSelectedId.value) {
+  if (isAllType.value || !currentSelectedId.value) {
     return null
   }
 
@@ -108,7 +139,7 @@ const scooterSummary = computed(() => {
   const online = list.filter(
     (item) => item.faultStatus !== 1 && Number.isFinite(item.longitude) && Number.isFinite(item.latitude)
   ).length
-  const fault = list.filter((item) => item.faultStatus === 1).length
+  const fault = list.filter((item) => Number(item.faultStatus) === 1).length
 
   return {
     total: list.length,
@@ -123,6 +154,23 @@ const summaryByType = computed(() => {
     [TYPE_NO_PARKING]: noParkingSummary.value,
     [TYPE_PARKING_POINT]: parkingPointSummary.value,
     [TYPE_SCOOTER]: scooterSummary.value
+  }
+})
+
+const allSummary = computed(() => {
+  const total =
+    zoneSummary.value.total
+    + noParkingSummary.value.total
+    + parkingPointSummary.value.total
+    + scooterSummary.value.total
+
+  return {
+    total,
+    zoneTotal: zoneSummary.value.total,
+    noParkingTotal: noParkingSummary.value.total,
+    parkingPointTotal: parkingPointSummary.value.total,
+    scooterTotal: scooterSummary.value.total,
+    scooterFault: scooterSummary.value.fault
   }
 })
 
@@ -218,6 +266,10 @@ const getRideText = (item) => {
 }
 
 const currentSelectOptions = computed(() => {
+  if (isAllType.value) {
+    return []
+  }
+
   const list = currentList.value || []
   const allLabel = allOptionLabelMap[selectedType.value]
 
@@ -297,6 +349,7 @@ const handleMapSelect = (payload) => {
   const type = payload.type
   const id = String(payload.item.id)
 
+  skipTypeResetOnce = true
   selectedType.value = type
   selectedIdByType.value = {
     ...selectedIdByType.value,
@@ -310,6 +363,16 @@ const handleMapSelect = (payload) => {
 }
 
 const handleTypeChange = () => {
+  if (skipTypeResetOnce) {
+    skipTypeResetOnce = false
+    return
+  }
+
+  if (isAllType.value) {
+    selectedDetail.value = null
+    return
+  }
+
   selectedIdByType.value = {
     ...selectedIdByType.value,
     [selectedType.value]: ''
@@ -427,6 +490,7 @@ onMounted(async () => {
             :selected-no-parking-zone-id="selectedIds.noParkingZoneId"
             :selected-parking-point-id="selectedIds.parkingPointId"
             :selected-scooter-id="selectedIds.scooterId"
+            :visible-types="visibleTypes"
             :height="620"
             @select="handleMapSelect"
           />
@@ -447,7 +511,7 @@ onMounted(async () => {
               <select
                 :value="currentSelectedId"
                 class="field-select"
-                :disabled="loadingLayers"
+                :disabled="loadingLayers || isAllType"
                 @change="
                   selectedIdByType = {
                     ...selectedIdByType,
@@ -455,7 +519,8 @@ onMounted(async () => {
                   }
                 "
               >
-                <option v-for="option in currentSelectOptions" :key="option.value" :value="option.value">
+                <option v-if="isAllType" value="">全部模式下不可选对象</option>
+                <option v-for="option in currentSelectOptions" v-else :key="option.value" :value="option.value">
                   {{ option.label }}
                 </option>
               </select>
@@ -465,7 +530,34 @@ onMounted(async () => {
           <section class="side-card">
             <h3 class="side-title">{{ detailTitle }}</h3>
 
-            <div v-if="detailMode === 'summary'" class="summary-grid">
+            <div v-if="detailMode === 'summary' && isAllType" class="summary-grid">
+              <article class="mini-metric">
+                <span>总对象数</span>
+                <strong>{{ formatNumber(allSummary.total) }}</strong>
+              </article>
+              <article class="mini-metric">
+                <span>片区</span>
+                <strong>{{ formatNumber(allSummary.zoneTotal) }}</strong>
+              </article>
+              <article class="mini-metric">
+                <span>禁停区</span>
+                <strong>{{ formatNumber(allSummary.noParkingTotal) }}</strong>
+              </article>
+              <article class="mini-metric">
+                <span>停车点</span>
+                <strong>{{ formatNumber(allSummary.parkingPointTotal) }}</strong>
+              </article>
+              <article class="mini-metric">
+                <span>车辆</span>
+                <strong>{{ formatNumber(allSummary.scooterTotal) }}</strong>
+              </article>
+              <article class="mini-metric">
+                <span>故障车辆</span>
+                <strong>{{ formatNumber(allSummary.scooterFault) }}</strong>
+              </article>
+            </div>
+
+            <div v-else-if="detailMode === 'summary'" class="summary-grid">
               <article class="mini-metric">
                 <span>总数</span>
                 <strong>{{ formatNumber(summaryByType[selectedType].total) }}</strong>

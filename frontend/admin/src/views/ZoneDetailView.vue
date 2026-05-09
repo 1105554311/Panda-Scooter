@@ -7,7 +7,8 @@ import { useUiStore } from '@/stores/ui'
 import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 import { formatDateTime } from '@/utils/format'
 import { getEditorCache } from '@/utils/editorCache'
-import { countPolygonPoints, formatPolygonPoints, getPolygonCenter } from '@/utils/polygon'
+import { countPolygonPoints } from '@/utils/polygon'
+import { formatLatLngCenterTextFromRawPolygon, normalizeZonePolygonForEditor } from '@/utils/noParkingPolygon'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,12 +24,7 @@ const scooters = ref([])
 const parkingPoints = ref([])
 
 const centerText = computed(() => {
-  const center = getPolygonCenter(detail.value?.polygon)
-  if (!center) {
-    return '--'
-  }
-
-  return `${center.longitude.toFixed(5)}, ${center.latitude.toFixed(5)}`
+  return formatLatLngCenterTextFromRawPolygon(detail.value?.polygon)
 })
 
 const fetchMapLayers = async () => {
@@ -131,7 +127,7 @@ onMounted(async () => {
 
       <section class="page-surface map-panel">
         <ZoneMapEditor
-          :model-value="detail.polygon ? formatPolygonPoints(detail.polygon) : ''"
+          :model-value="detail.polygon ? normalizeZonePolygonForEditor(detail.polygon) : ''"
           :zones="zones.filter((item) => String(item.id) !== String(detail.id))"
           :no-parking-zones="noParkingZones"
           :scooters="scooters"
