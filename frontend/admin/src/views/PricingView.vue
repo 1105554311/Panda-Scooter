@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, ref } from 'vue'
 import { getPricingRules, updatePricingRules } from '@/api'
 import { useUiStore } from '@/stores/ui'
@@ -22,8 +22,14 @@ const saving = ref(false)
 const ridePreviewPrice = computed(() => {
   const basePrice = Number(form.value.basePrice || 0)
   const pricePerMin = Number(form.value.pricePerMin || 0)
+  const billingInterval = Number(form.value.billingInterval || 0)
   const duration = 18
-  return formatCurrency(basePrice + duration * pricePerMin)
+
+  if (!Number.isFinite(billingInterval) || billingInterval <= 0) {
+    return formatCurrency(basePrice)
+  }
+
+  return formatCurrency(basePrice + (duration / billingInterval) * pricePerMin)
 })
 
 const fetchRules = async () => {
@@ -54,7 +60,7 @@ const submit = async () => {
 
   if (!Number.isFinite(pricePerMin) || pricePerMin <= 0) {
     uiStore.pushToast({
-      message: '请输入有效的分钟单价',
+      message: '请输入有效的计费单价',
       tone: 'warning'
     })
     return
@@ -116,7 +122,7 @@ onMounted(fetchRules)
         <h3>当前定价策略</h3>
         <div class="current-pricing-grid">
           <div class="current-pricing-item">
-            <span>分钟单价</span>
+            <span>计费单价</span>
             <strong>{{ formatCurrency(currentRules.pricePerMin || 0) }}</strong>
           </div>
           <div class="current-pricing-item">
@@ -132,7 +138,7 @@ onMounted(fetchRules)
 
       <div class="form-grid">
         <label class="form-field span-4">
-          <span class="field-label">分钟单价</span>
+          <span class="field-label">计费单价</span>
           <input
             v-model="form.pricePerMin"
             class="field-input"
@@ -141,7 +147,7 @@ onMounted(fetchRules)
             step="0.01"
             placeholder="0.20"
           />
-          <span class="field-help">单位：元 / 分钟</span>
+          <span class="field-help">单位：元 / 计费间隔</span>
         </label>
 
         <label class="form-field span-4">
@@ -172,7 +178,7 @@ onMounted(fetchRules)
       </div>
 
       <div class="button-row pricing-actions">
-        <button type="button" class="button-primary" :disabled="saving" @click="submit">
+        <button type="button" class="button-primary" :disabled="saving || loading" @click="submit">
           {{ saving ? '保存中...' : '保存策略' }}
         </button>
       </div>
@@ -191,7 +197,7 @@ onMounted(fetchRules)
           <strong>{{ formatCurrency(form.basePrice || 0) }}</strong>
         </div>
         <div class="preview-card">
-          <span>分钟单价</span>
+          <span>计费单价</span>
           <strong>{{ formatCurrency(form.pricePerMin || 0) }}</strong>
         </div>
         <div class="preview-card preview-card-strong">

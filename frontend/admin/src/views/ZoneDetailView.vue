@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import MapLayerToggleBar from '@/components/MapLayerToggleBar.vue'
 import ZoneMapEditor from '@/components/ZoneMapEditor.vue'
 import { getZoneDetail } from '@/api'
 import { useUiStore } from '@/stores/ui'
@@ -8,6 +9,7 @@ import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 import { formatDateTime } from '@/utils/format'
 import { getEditorCache } from '@/utils/editorCache'
 import { countPolygonPoints } from '@/utils/polygon'
+import { ALL_MAP_LAYERS, MAP_LAYER_ZONE } from '@/utils/adminMapVisuals'
 import { formatLatLngCenterTextFromRawPolygon, normalizeZonePolygonForEditor } from '@/utils/noParkingPolygon'
 
 const route = useRoute()
@@ -22,6 +24,7 @@ const zones = ref([])
 const noParkingZones = ref([])
 const scooters = ref([])
 const parkingPoints = ref([])
+const visibleTypes = ref(ALL_MAP_LAYERS.slice())
 
 const centerText = computed(() => {
   return formatLatLngCenterTextFromRawPolygon(detail.value?.polygon)
@@ -133,9 +136,12 @@ onMounted(async () => {
           :scooters="scooters"
           :parking-points="parkingPoints"
           :active-zone-id="detail.id"
+          :visible-types="visibleTypes"
           :readonly="true"
           :height="520"
         />
+
+        <MapLayerToggleBar v-model="visibleTypes" :self-layer="MAP_LAYER_ZONE" />
       </section>
 
       <div class="detail-card">

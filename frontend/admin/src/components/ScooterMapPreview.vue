@@ -13,6 +13,7 @@ import {
   isLayerVisible
 } from '@/utils/adminMapVisuals'
 import { toNoParkingAmapPath, toZoneAmapPath } from '@/utils/noParkingPolygon'
+import { parsePolygonPoints } from '@/utils/polygon'
 
 const DEFAULT_CENTER = [103.99015677941316, 30.762680478785253]
 const DEFAULT_ZOOM = 14
@@ -51,6 +52,14 @@ const props = defineProps({
     default: ''
   },
   focusZoneId: {
+    type: [String, Number],
+    default: ''
+  },
+  focusType: {
+    type: String,
+    default: ''
+  },
+  focusId: {
     type: [String, Number],
     default: ''
   },
@@ -464,6 +473,84 @@ const fitViewToAll = () => {
   map.setFitView(overlays, false, [48, 48, 48, 48])
 }
 
+const focusSelectedObject = () => {
+  if (!map || !AMap || !props.focusType || !props.focusId) {
+    return false
+  }
+
+  const targetId = String(props.focusId)
+
+  if (props.focusType === MAP_LAYER_ZONE) {
+    if (!isLayerVisible(props.visibleTypes, MAP_LAYER_ZONE)) {
+      return false
+    }
+    const target = props.zones.find((item) => String(item.id) === targetId)
+    if (!target) {
+      return false
+    }
+    const path = toZoneAmapPath(target.polygon)
+    if (path.length < 3) {
+      return false
+    }
+    const polygon = new AMap.Polygon({ path })
+    map.setFitView([polygon], false, [56, 56, 56, 56])
+    return true
+  }
+
+  if (props.focusType === MAP_LAYER_NO_PARKING) {
+    if (!isLayerVisible(props.visibleTypes, MAP_LAYER_NO_PARKING)) {
+      return false
+    }
+    const target = props.noParkingZones.find((item) => String(item.id) === targetId)
+    if (!target) {
+      return false
+    }
+    const path = toNoParkingAmapPath(target.polygon)
+    if (path.length < 3) {
+      return false
+    }
+    const polygon = new AMap.Polygon({ path })
+    map.setFitView([polygon], false, [56, 56, 56, 56])
+    return true
+  }
+
+  if (props.focusType === MAP_LAYER_PARKING_POINT) {
+    if (!isLayerVisible(props.visibleTypes, MAP_LAYER_PARKING_POINT)) {
+      return false
+    }
+    const target = props.parkingPoints.find(
+      (item) =>
+        String(item.id) === targetId
+        && Number.isFinite(item.longitude)
+        && Number.isFinite(item.latitude)
+    )
+    if (!target) {
+      return false
+    }
+    map.setZoomAndCenter(Math.max(map.getZoom?.() || DEFAULT_ZOOM, 17), [target.longitude, target.latitude])
+    return true
+  }
+
+  if (props.focusType === MAP_LAYER_SCOOTER) {
+    if (!isLayerVisible(props.visibleTypes, MAP_LAYER_SCOOTER)) {
+      return false
+    }
+    const target = props.scooters.find(
+      (item) =>
+        String(item.id) === targetId
+        && Number.isFinite(item.longitude)
+        && Number.isFinite(item.latitude)
+    )
+    if (!target) {
+      return false
+    }
+    map.setZoomAndCenter(Math.max(map.getZoom?.() || DEFAULT_ZOOM, 17), [target.longitude, target.latitude])
+    return true
+  }
+
+  return false
+}
+
 const renderMapData = ({ fitView = true } = {}) => {
   renderZoneOverlays()
   renderNoParkingOverlays()
@@ -475,7 +562,7 @@ const renderMapData = ({ fitView = true } = {}) => {
     return
   }
 
-  if (!focusZone()) {
+  if (!focusSelectedObject() && !focusZone()) {
     fitViewToAll()
   }
 }
@@ -573,6 +660,21 @@ watch(
 
     if (!focusZone()) {
       fitViewToAll()
+    }
+  }
+)
+
+watch(
+  () => [props.focusType, props.focusId],
+  () => {
+    if (!map || !AMap) {
+      return
+    }
+
+    if (!focusSelectedObject()) {
+      if (!focusZone()) {
+        fitViewToAll()
+      }
     }
   }
 )

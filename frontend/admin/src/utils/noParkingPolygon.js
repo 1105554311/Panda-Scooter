@@ -49,7 +49,7 @@ export const formatLatLngCenterTextFromRawPolygon = (polygon, digits = 5) => {
 
   const centerLatitude = totals.latitude / points.length
   const centerLongitude = totals.longitude / points.length
-  return `${centerLatitude.toFixed(digits)}, ${centerLongitude.toFixed(digits)}`
+  return `${centerLongitude.toFixed(digits)}, ${centerLatitude.toFixed(digits)}`
 }
 
 export const formatLatLngCenterTextFromCanonicalPolygon = (polygon, digits = 5) => {
@@ -68,7 +68,7 @@ export const formatLatLngCenterTextFromCanonicalPolygon = (polygon, digits = 5) 
 
   const centerLatitude = totals.latitude / points.length
   const centerLongitude = totals.longitude / points.length
-  return `${centerLatitude.toFixed(digits)}, ${centerLongitude.toFixed(digits)}`
+  return `${centerLongitude.toFixed(digits)}, ${centerLatitude.toFixed(digits)}`
 }
 
 export const toNoParkingAmapPath = toLatLngOrderedAmapPath

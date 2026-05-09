@@ -66,8 +66,12 @@ export const buildIconMarkerContent = ({ src, width, height, badgeColor = '' }) 
 }
 
 export const isLayerVisible = (visibleTypes, type) => {
-  if (!Array.isArray(visibleTypes) || visibleTypes.length === 0) {
+  if (!Array.isArray(visibleTypes)) {
     return true
+  }
+
+  if (visibleTypes.length === 0) {
+    return false
   }
 
   return visibleTypes.includes(type)

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import MapLayerToggleBar from '@/components/MapLayerToggleBar.vue'
 import ScooterMapPreview from '@/components/ScooterMapPreview.vue'
 import {
   ALL_MAP_LAYERS,
@@ -27,6 +28,7 @@ const layers = ref({
   scooters: [],
   parkingPoints: []
 })
+const visibleTypes = ref(ALL_MAP_LAYERS.slice())
 
 const selectedType = ref(TYPE_ALL)
 const selectedIdByType = ref({
@@ -35,8 +37,6 @@ const selectedIdByType = ref({
   [TYPE_PARKING_POINT]: '',
   [TYPE_SCOOTER]: ''
 })
-const selectedDetail = ref(null)
-let skipTypeResetOnce = false
 
 const isAllType = computed(() => selectedType.value === TYPE_ALL)
 
@@ -62,13 +62,6 @@ const allOptionLabelMap = {
   [TYPE_PARKING_POINT]: '全部停车点',
   [TYPE_SCOOTER]: '全部车辆'
 }
-
-const visibleTypes = computed(() => {
-  if (isAllType.value) {
-    return ALL_MAP_LAYERS.slice()
-  }
-  return [selectedType.value]
-})
 
 const itemListByType = computed(() => {
   return {
@@ -184,11 +177,7 @@ const selectedIds = computed(() => {
 })
 
 const detailMode = computed(() => {
-  if (selectedDetail.value) {
-    return selectedDetail.value.type
-  }
-
-  if (currentSelectedItem.value) {
+  if (!isAllType.value && currentSelectedItem.value) {
     return selectedType.value
   }
 
@@ -196,10 +185,6 @@ const detailMode = computed(() => {
 })
 
 const detailData = computed(() => {
-  if (selectedDetail.value) {
-    return selectedDetail.value.item
-  }
-
   return currentSelectedItem.value
 })
 
@@ -323,24 +308,6 @@ const ensureSelectedIdsValid = () => {
   selectedIdByType.value = next
 }
 
-const resetDetailWhenAllSelected = () => {
-  if (!currentSelectedId.value) {
-    selectedDetail.value = null
-  }
-}
-
-const syncCurrentTypeSelectionToDetail = () => {
-  if (!currentSelectedItem.value) {
-    resetDetailWhenAllSelected()
-    return
-  }
-
-  selectedDetail.value = {
-    type: selectedType.value,
-    item: currentSelectedItem.value
-  }
-}
-
 const handleMapSelect = (payload) => {
   if (!payload || !payload.type || !payload.item) {
     return
@@ -349,44 +316,11 @@ const handleMapSelect = (payload) => {
   const type = payload.type
   const id = String(payload.item.id)
 
-  skipTypeResetOnce = true
   selectedType.value = type
   selectedIdByType.value = {
     ...selectedIdByType.value,
     [type]: id
   }
-
-  selectedDetail.value = {
-    type,
-    item: payload.item
-  }
-}
-
-const handleTypeChange = () => {
-  if (skipTypeResetOnce) {
-    skipTypeResetOnce = false
-    return
-  }
-
-  if (isAllType.value) {
-    selectedDetail.value = null
-    return
-  }
-
-  selectedIdByType.value = {
-    ...selectedIdByType.value,
-    [selectedType.value]: ''
-  }
-  selectedDetail.value = null
-}
-
-const handleObjectChange = () => {
-  if (!currentSelectedId.value) {
-    resetDetailWhenAllSelected()
-    return
-  }
-
-  syncCurrentTypeSelectionToDetail()
 }
 
 const gotoEdit = () => {
@@ -435,33 +369,8 @@ watch(
   () => layers.value,
   () => {
     ensureSelectedIdsValid()
-
-    if (selectedDetail.value) {
-      const list = itemListByType.value[selectedDetail.value.type] || []
-      const updated = list.find((item) => String(item.id) === String(selectedDetail.value.item.id))
-      if (updated) {
-        selectedDetail.value = {
-          type: selectedDetail.value.type,
-          item: updated
-        }
-      }
-    }
   },
   { deep: true }
-)
-
-watch(
-  () => selectedType.value,
-  () => {
-    handleTypeChange()
-  }
-)
-
-watch(
-  () => currentSelectedId.value,
-  () => {
-    handleObjectChange()
-  }
 )
 
 onMounted(async () => {
@@ -485,6 +394,8 @@ onMounted(async () => {
             :zones="layers.zones"
             :no-parking-zones="layers.noParkingZones"
             :parking-points="layers.parkingPoints"
+            :focus-type="selectedType"
+            :focus-id="currentSelectedId"
             :focus-zone-id="selectedType === TYPE_ZONE ? (selectedIds.zoneId || '') : ''"
             :selected-zone-id="selectedIds.zoneId"
             :selected-no-parking-zone-id="selectedIds.noParkingZoneId"
@@ -494,6 +405,8 @@ onMounted(async () => {
             :height="620"
             @select="handleMapSelect"
           />
+
+          <MapLayerToggleBar v-model="visibleTypes" />
         </section>
 
         <aside class="page-surface vehicle-side-panel">
