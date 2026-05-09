@@ -36,8 +36,8 @@ export const getZoneDetail = (params = {}) => {
     url: '/admin/zones/getZoneDetail',
     method: 'GET',
     params: {
-      areaId: params.areaId ?? params.id,
-      id: params.id ?? params.areaId
+      areaId: params.areaId// ?? params.id
+      // ,id: params.id ?? params.areaId
     }
   })
 }

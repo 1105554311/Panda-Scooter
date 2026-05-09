@@ -86,7 +86,7 @@ const fetchDetail = async () => {
 
     const response = await getZoneDetail({
       areaId: zoneId.value,
-      id: zoneId.value
+      // id: zoneId.value
     })
     detail.value = withZoneDispatchers(response.data || detail.value || {})
   } catch (error) {

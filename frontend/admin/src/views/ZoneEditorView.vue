@@ -135,7 +135,7 @@ const fetchDetail = async () => {
   try {
     const response = await getZoneDetail({
       areaId: zoneId.value,
-      id: zoneId.value
+      // id: zoneId.value
     })
     const data = response.data || {}
     applyRecord(data)

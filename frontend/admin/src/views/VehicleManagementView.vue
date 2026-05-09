@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import MapLayerToggleBar from '@/components/MapLayerToggleBar.vue'
 import ScooterMapPreview from '@/components/ScooterMapPreview.vue'
+import { getZoneDetail } from '@/api'
 import {
   ALL_MAP_LAYERS,
   MAP_LAYER_NO_PARKING,
@@ -12,6 +13,7 @@ import {
 } from '@/utils/adminMapVisuals'
 import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 import { formatBinaryStatus, formatDateTime, formatNumber } from '@/utils/format'
+import { getZoneDispatchers } from '@/utils/zoneDispatchers'
 
 const TYPE_ALL = 'all'
 const TYPE_ZONE = MAP_LAYER_ZONE
@@ -49,6 +51,14 @@ const selectedIdByType = ref({
   [TYPE_PARKING_POINT]: '',
   [TYPE_SCOOTER]: ''
 })
+const loadingZoneDetail = ref(false)
+const selectedZoneDetail = ref(null)
+let latestZoneDetailRequestId = 0
+
+const normalizePositiveId = (value) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null
+}
 
 const isAllType = computed(() => selectedType.value === TYPE_ALL)
 
@@ -197,7 +207,53 @@ const detailMode = computed(() => {
 })
 
 const detailData = computed(() => {
-  return currentSelectedItem.value
+  const selected = currentSelectedItem.value
+  if (!selected) {
+    return null
+  }
+
+  if (
+    selectedType.value === TYPE_ZONE
+    && selectedZoneDetail.value
+    && String(selectedZoneDetail.value.id) === String(selected.id)
+  ) {
+    return {
+      ...selected,
+      ...selectedZoneDetail.value
+    }
+  }
+
+  return selected
+})
+
+const zoneDispatchers = computed(() => {
+  if (detailMode.value !== TYPE_ZONE || !detailData.value) {
+    return []
+  }
+
+  return getZoneDispatchers(detailData.value)
+})
+
+const zoneDispatcherNameText = computed(() => {
+  if (!zoneDispatchers.value.length) {
+    return loadingZoneDetail.value ? '加载中...' : '未分配'
+  }
+
+  return zoneDispatchers.value
+    .map((item, index) => item.name || `调度员${index + 1}`)
+    .join('、')
+})
+
+const zoneDispatcherEmailText = computed(() => {
+  const emails = zoneDispatchers.value
+    .map((item) => item.email)
+    .filter((item) => Boolean(item))
+
+  if (emails.length) {
+    return emails.join('、')
+  }
+
+  return loadingZoneDetail.value ? '加载中...' : '--'
 })
 
 const detailTitle = computed(() => {
@@ -377,12 +433,62 @@ const fetchLayers = async () => {
   }
 }
 
+const clearSelectedZoneDetail = () => {
+  latestZoneDetailRequestId += 1
+  loadingZoneDetail.value = false
+  selectedZoneDetail.value = null
+}
+
+const fetchSelectedZoneDetail = async (zoneId) => {
+  const areaId = normalizePositiveId(zoneId)
+
+  if (!areaId) {
+    clearSelectedZoneDetail()
+    return
+  }
+
+  const requestId = ++latestZoneDetailRequestId
+  loadingZoneDetail.value = true
+
+  try {
+    const response = await getZoneDetail({ areaId })
+    if (requestId !== latestZoneDetailRequestId) {
+      return
+    }
+
+    selectedZoneDetail.value = response.data || null
+  } catch (error) {
+    if (requestId !== latestZoneDetailRequestId) {
+      return
+    }
+
+    selectedZoneDetail.value = null
+  } finally {
+    if (requestId === latestZoneDetailRequestId) {
+      loadingZoneDetail.value = false
+    }
+  }
+}
+
 watch(
   () => layers.value,
   () => {
     ensureSelectedIdsValid()
   },
   { deep: true }
+)
+
+watch(
+  () => [detailMode.value, currentSelectedId.value],
+  ([mode, selectedId]) => {
+    if (mode !== TYPE_ZONE || !selectedId) {
+      clearSelectedZoneDetail()
+      return
+    }
+
+    fetchSelectedZoneDetail(selectedId)
+  },
+  { immediate: true }
 )
 
 onMounted(async () => {
@@ -524,11 +630,15 @@ onMounted(async () => {
               </div>
               <div class="detail-item">
                 <span>调度员</span>
-                <strong>{{ detailData.dispatcherName || '未分配' }}</strong>
+                <strong>{{ zoneDispatcherNameText }}</strong>
               </div>
               <div class="detail-item">
                 <span>调度员邮箱</span>
-                <strong>{{ detailData.dispatcherEmail || '--' }}</strong>
+                <strong>{{ zoneDispatcherEmailText }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>片区中车辆数</span>
+                <strong>{{ detailData.vehicleCount ?? '--' }}</strong>
               </div>
               <div class="detail-item">
                 <span>创建时间</span>
