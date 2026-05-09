@@ -3,9 +3,27 @@ import { computed, onMounted, ref, watch } from 'vue'
 import StatCard from '@/components/StatCard.vue'
 import TrendChart from '@/components/TrendChart.vue'
 import { getDataOverview, getLiveData, getZoneList } from '@/api'
-import { createDateRange, formatCurrency, formatNumber, toISODate } from '@/utils/format'
+import { createDateRange, formatCurrency, formatDate, formatNumber } from '@/utils/format'
 
 const range = createDateRange(30)
+
+const text = {
+  totalOrders: '今日总订单',
+  totalRevenue: '今日总营收',
+  onlineFaultScooters: '\u5728\u7ebf/\u6545\u969c\u8f66\u8f86',
+  updatedAt: '\u66f4\u65b0\u4e8e',
+  trendTitle: '\u8ba2\u5355\u4e0e\u8425\u6536\u8d8b\u52bf',
+  startDate: '\u5f00\u59cb\u65e5\u671f',
+  endDate: '\u7ed3\u675f\u65e5\u671f',
+  granularity: '\u7c92\u5ea6',
+  byDay: '\u6309\u5929',
+  byWeek: '\u6309\u5468',
+  byMonth: '\u6309\u6708',
+  area: '\u7247\u533a',
+  allAreas: '\u5168\u90e8\u7247\u533a',
+  rangeOrders: '\u533a\u95f4\u603b\u8ba2\u5355',
+  rangeRevenue: '\u533a\u95f4\u603b\u8425\u6536'
+}
 
 const overviewFilters = ref({
   startDate: range.startDate,
@@ -14,19 +32,18 @@ const overviewFilters = ref({
   areaId: ''
 })
 
-const vehicleDate = ref(toISODate())
-
 const areas = ref([])
 const overview = ref({
   series: []
 })
-const vehicleOverview = ref({
-  totalOnline: 0,
-  totalFault: 0,
-  regions: []
+const liveData = ref({
+  updatedAt: '',
+  todayOrders: 0,
+  todayRevenue: 0,
+  onlineScooters: 0,
+  faultScooters: 0
 })
 const loadingOverview = ref(false)
-const loadingVehicleOverview = ref(false)
 const loadingAreas = ref(false)
 
 const overviewSummary = computed(() => {
@@ -41,16 +58,8 @@ const overviewSummary = computed(() => {
   )
 })
 
-const vehicleCards = computed(() => {
-  const regions = Array.isArray(vehicleOverview.value.regions) ? vehicleOverview.value.regions : []
-
-  return regions.map((item) => ({
-    key: item.id,
-    name: item.name || `片区 #${item.id}`,
-    online: Number(item.onlineScooters || 0),
-    fault: Number(item.faultScooters || 0),
-    areaId: item.id
-  }))
+const updatedAtHint = computed(() => {
+  return `${text.updatedAt}${formatDate(liveData.value.updatedAt)}`
 })
 
 const normalizedAreaId = (value) => {
@@ -91,48 +100,24 @@ const fetchOverview = async () => {
   }
 }
 
-const fetchVehicleOverview = async () => {
-  loadingVehicleOverview.value = true
-
+const fetchLiveData = async () => {
   try {
-    const regionResults = await Promise.all(
-      areas.value.map(async (item) => {
-        try {
-          const response = await getLiveData({
-            date: vehicleDate.value,
-            areaId: item.id
-          })
-
-          return {
-            id: item.id,
-            name: item.name,
-            onlineScooters: response.data?.onlineScooters || 0,
-            faultScooters: response.data?.faultScooters || 0
-          }
-        } catch (error) {
-          return {
-            id: item.id,
-            name: item.name,
-            onlineScooters: 0,
-            faultScooters: 0
-          }
-        }
-      })
-    )
-
-    vehicleOverview.value = {
-      totalOnline: regionResults.reduce((sum, item) => sum + Number(item.onlineScooters || 0), 0),
-      totalFault: regionResults.reduce((sum, item) => sum + Number(item.faultScooters || 0), 0),
-      regions: regionResults
+    const response = await getLiveData()
+    liveData.value = {
+      updatedAt: response.data?.updatedAt || '',
+      todayOrders: Number(response.data?.todayOrders || 0),
+      todayRevenue: Number(response.data?.todayRevenue || 0),
+      onlineScooters: Number(response.data?.onlineScooters || 0),
+      faultScooters: Number(response.data?.faultScooters || 0)
     }
   } catch (error) {
-    vehicleOverview.value = {
-      totalOnline: 0,
-      totalFault: 0,
-      regions: []
+    liveData.value = {
+      updatedAt: '',
+      todayOrders: 0,
+      todayRevenue: 0,
+      onlineScooters: 0,
+      faultScooters: 0
     }
-  } finally {
-    loadingVehicleOverview.value = false
   }
 }
 
@@ -148,68 +133,53 @@ watch(
   }
 )
 
-watch(
-  () => [vehicleDate.value],
-  () => {
-    fetchVehicleOverview()
-  }
-)
-
 onMounted(async () => {
   await fetchAreas()
   await fetchOverview()
-  await fetchVehicleOverview()
+  await fetchLiveData()
 })
 </script>
 
 <template>
   <div class="section-grid">
     <section class="metric-grid">
+      <StatCard :label="text.totalOrders" :value="formatNumber(liveData.todayOrders)" :hint="updatedAtHint" />
+      <StatCard :label="text.totalRevenue" :value="formatCurrency(liveData.todayRevenue)" :hint="updatedAtHint" />
       <StatCard
-        label="区间总订单"
-        :value="formatNumber(overviewSummary.orders || 0)"
-        :hint="`趋势时间 ${overviewFilters.startDate} 至 ${overviewFilters.endDate}`"
-      />
-      <StatCard
-        label="区间总营收"
-        :value="formatCurrency(overviewSummary.revenue || 0)"
-        :hint="`趋势时间 ${overviewFilters.startDate} 至 ${overviewFilters.endDate}`"
-      />
-      <StatCard
-        label="车辆概况"
-        :value="`${formatNumber(vehicleOverview.totalOnline || 0)} / ${formatNumber(vehicleOverview.totalFault || 0)}`"
-        :hint="`统计日期 ${vehicleDate || '--'}，正常 / 故障`"
+        :label="text.onlineFaultScooters"
+        :value="`${formatNumber(liveData.onlineScooters)} / ${formatNumber(liveData.faultScooters)}`"
+        :hint="updatedAtHint"
       />
     </section>
 
     <section class="page-surface dashboard-panel">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">订单与营收趋势</h2>
+          <h2 class="panel-title">{{ text.trendTitle }}</h2>
         </div>
       </div>
 
       <div class="toolbar dashboard-toolbar">
         <label class="form-field toolbar-grow">
-          <span class="field-label">开始日期</span>
+          <span class="field-label">{{ text.startDate }}</span>
           <input v-model="overviewFilters.startDate" class="field-input" type="date" />
         </label>
         <label class="form-field toolbar-grow">
-          <span class="field-label">结束日期</span>
+          <span class="field-label">{{ text.endDate }}</span>
           <input v-model="overviewFilters.endDate" class="field-input" type="date" />
         </label>
         <label class="form-field">
-          <span class="field-label">粒度</span>
+          <span class="field-label">{{ text.granularity }}</span>
           <select v-model="overviewFilters.granularity" class="field-select">
-            <option value="day">按天</option>
-            <option value="week">按周</option>
-            <option value="month">按月</option>
+            <option value="day">{{ text.byDay }}</option>
+            <option value="week">{{ text.byWeek }}</option>
+            <option value="month">{{ text.byMonth }}</option>
           </select>
         </label>
         <label class="form-field toolbar-grow">
-          <span class="field-label">片区</span>
+          <span class="field-label">{{ text.area }}</span>
           <select v-model="overviewFilters.areaId" class="field-select" :disabled="loadingAreas">
-            <option value="">全部片区</option>
+            <option value="">{{ text.allAreas }}</option>
             <option v-for="item in areas" :key="item.id" :value="String(item.id)">{{ item.name }}</option>
           </select>
         </label>
@@ -217,56 +187,16 @@ onMounted(async () => {
 
       <div class="dashboard-summary-row">
         <div class="summary-tile">
-          <span>区间总订单</span>
+          <span>{{ text.rangeOrders }}</span>
           <strong>{{ formatNumber(overviewSummary.orders) }}</strong>
         </div>
         <div class="summary-tile">
-          <span>区间总营收</span>
+          <span>{{ text.rangeRevenue }}</span>
           <strong>{{ formatCurrency(overviewSummary.revenue) }}</strong>
         </div>
       </div>
 
       <TrendChart :series="overview.series || []" />
-    </section>
-
-    <section class="page-surface dashboard-panel">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">车辆概况</h2>
-        </div>
-      </div>
-
-      <div class="toolbar">
-        <label class="form-field toolbar-grow">
-          <span class="field-label">统计日期</span>
-          <input v-model="vehicleDate" class="field-input" type="date" />
-        </label>
-      </div>
-
-      <div class="vehicle-grid">
-        <article v-for="item in vehicleCards" :key="item.key" class="vehicle-card">
-          <div class="vehicle-card-header">
-            <div>
-              <span class="vehicle-card-kicker">区域 #{{ item.areaId }}</span>
-              <h3>{{ item.name }}</h3>
-            </div>
-            <div class="vehicle-card-meta">
-              <span>单区域</span>
-            </div>
-          </div>
-
-          <div class="vehicle-card-body">
-            <div class="vehicle-stat">
-              <span>正常车辆</span>
-              <strong>{{ formatNumber(item.online) }}</strong>
-            </div>
-            <div class="vehicle-stat">
-              <span>故障车辆</span>
-              <strong>{{ formatNumber(item.fault) }}</strong>
-            </div>
-          </div>
-        </article>
-      </div>
     </section>
   </div>
 </template>
@@ -293,9 +223,7 @@ onMounted(async () => {
   background: #fafaf8;
 }
 
-.summary-tile span,
-.vehicle-stat span,
-.toolbar-note strong {
+.summary-tile span {
   display: block;
   color: #737373;
   font-size: 13px;
@@ -309,85 +237,8 @@ onMounted(async () => {
   font-weight: 400;
 }
 
-.toolbar-note {
-  min-width: 260px;
-  padding: 18px;
-  border: 1px solid #e5e5e2;
-  background: #fafaf8;
-}
-
-.toolbar-note p {
-  margin: 6px 0 0;
-  color: #525252;
-}
-
-.vehicle-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.vehicle-card {
-  border: 1px solid #e5e5e2;
-  background: #ffffff;
-  padding: 18px;
-  display: grid;
-  gap: 16px;
-}
-
-.vehicle-card.overall {
-  background: #fafaf8;
-  grid-column: 1 / -1;
-}
-
-.vehicle-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.vehicle-card-kicker {
-  display: inline-block;
-  margin-bottom: 6px;
-  color: #737373;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-}
-
-.vehicle-card-header h3 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 400;
-}
-
-.vehicle-card-meta {
-  color: #737373;
-  font-size: 12px;
-}
-
-.vehicle-card-body {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.vehicle-stat {
-  padding: 16px;
-  border: 1px solid #ecece8;
-  background: #fcfcfb;
-}
-
-.vehicle-stat strong {
-  display: block;
-  margin-top: 8px;
-  font-size: 28px;
-  font-weight: 400;
-}
-
 @media (max-width: 980px) {
-  .dashboard-summary-row,
-  .vehicle-grid {
+  .dashboard-summary-row {
     grid-template-columns: 1fr;
   }
 }

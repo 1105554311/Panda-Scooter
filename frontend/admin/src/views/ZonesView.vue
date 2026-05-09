@@ -8,9 +8,15 @@ import { formatDateTime } from '@/utils/format'
 import { setEditorCache } from '@/utils/editorCache'
 import { countPolygonPoints } from '@/utils/polygon'
 import { formatLatLngCenterTextFromRawPolygon } from '@/utils/noParkingPolygon'
+import { formatZoneDispatcherDisplay, hasDispatcherInZone, withZoneDispatchers } from '@/utils/zoneDispatchers'
 
 const router = useRouter()
 const uiStore = useUiStore()
+
+const UNASSIGNED_FILTER = '__UNASSIGNED__'
+const FULL_FETCH_PAGE_SIZE = 200
+const MAX_FETCH_PAGES = 200
+const CACHE_SCOPE = 'zone'
 
 const filters = ref({
   keyword: '',
@@ -20,63 +26,162 @@ const filters = ref({
 })
 
 const zones = ref([])
+const rawAllZones = ref([])
+const filteredZones = ref([])
 const total = ref(0)
 const loading = ref(false)
 const dispatchers = ref([])
-const CACHE_SCOPE = 'zone'
+
+const normalizePositiveId = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? num : null
+}
 
 const dispatcherMapByArea = computed(() => {
   return dispatchers.value.reduce((result, item) => {
-    if (item.areaId) {
-      result[item.areaId] = item
+    const areaId = normalizePositiveId(item.areaId)
+    if (!areaId) {
+      return result
     }
+
+    if (!result[areaId]) {
+      result[areaId] = []
+    }
+
+    result[areaId].push(item)
     return result
   }, {})
 })
 
+const normalizeZoneList = (list = []) => {
+  return list.map((item) => withZoneDispatchers(item, { fallbackByArea: dispatcherMapByArea.value }))
+}
+
+const totalZoneCount = computed(() => rawAllZones.value.length)
+
 const assignedZoneCount = computed(() => {
-  return zones.value.filter((item) => dispatcherMapByArea.value[item.id]).length
+  return rawAllZones.value.filter((item) => item.dispatchers.length > 0).length
+})
+
+const unassignedZoneCount = computed(() => {
+  return Math.max(totalZoneCount.value - assignedZoneCount.value, 0)
 })
 
 const formatCenterText = (polygon) => {
   return formatLatLngCenterTextFromRawPolygon(polygon)
 }
 
-const fetchDispatchers = async () => {
-  try {
-    const response = await getDispatcherList({
-      page: 1,
-      pageSize: 100
+const fetchAllItems = async (requester, listKey) => {
+  let page = 1
+  let apiTotal = null
+  const merged = []
+
+  while (page <= MAX_FETCH_PAGES) {
+    const response = await requester({
+      page,
+      pageSize: FULL_FETCH_PAGE_SIZE
     })
 
-    dispatchers.value = response.data?.dispatcherList || []
+    const data = response.data || {}
+    const list = Array.isArray(data[listKey]) ? data[listKey] : []
+    const totalFromApi = Number(data.total)
+
+    if (Number.isFinite(totalFromApi) && totalFromApi >= 0) {
+      apiTotal = totalFromApi
+    }
+
+    merged.push(...list)
+
+    if (!list.length) {
+      break
+    }
+
+    if (apiTotal !== null && merged.length >= apiTotal) {
+      break
+    }
+
+    if (list.length < FULL_FETCH_PAGE_SIZE) {
+      break
+    }
+
+    page += 1
+  }
+
+  return merged
+}
+
+const fetchDispatchers = async () => {
+  try {
+    dispatchers.value = await fetchAllItems(getDispatcherList, 'dispatcherList')
   } catch (error) {
     dispatchers.value = []
   }
 }
 
 const fetchZones = async () => {
+  try {
+    const list = await fetchAllItems(getZoneList, 'areaList')
+    rawAllZones.value = normalizeZoneList(list)
+  } catch (error) {
+    rawAllZones.value = []
+  }
+}
+
+const syncPagedZones = () => {
+  const pageSize = Number(filters.value.pageSize) > 0 ? Number(filters.value.pageSize) : 10
+  const maxPage = Math.max(1, Math.ceil(filteredZones.value.length / pageSize))
+  const normalizedPage = Number(filters.value.page) > 0 ? Number(filters.value.page) : 1
+  const currentPage = Math.min(normalizedPage, maxPage)
+
+  if (currentPage !== normalizedPage) {
+    filters.value.page = currentPage
+    return
+  }
+
+  const start = (currentPage - 1) * pageSize
+  zones.value = filteredZones.value.slice(start, start + pageSize)
+  total.value = filteredZones.value.length
+}
+
+const applyLocalFilters = () => {
+  const keyword = filters.value.keyword.trim().toLowerCase()
+  const selectedDispatcherId = filters.value.dispatcherId
+
+  let next = rawAllZones.value.slice()
+
+  if (keyword) {
+    next = next.filter((item) => {
+      return String(item.name || '').toLowerCase().includes(keyword)
+    })
+  }
+
+  if (selectedDispatcherId === UNASSIGNED_FILTER) {
+    next = next.filter((item) => {
+      return item.dispatchers.length === 0
+    })
+  } else if (selectedDispatcherId) {
+    const selectedId = normalizePositiveId(selectedDispatcherId)
+    next = selectedId ? next.filter((item) => hasDispatcherInZone(item, selectedId)) : []
+  }
+
+  filteredZones.value = next
+  syncPagedZones()
+}
+
+const fetchAllData = async () => {
   loading.value = true
 
   try {
-    const response = await getZoneList({
-      page: filters.value.page,
-      pageSize: filters.value.pageSize,
-      keyword: filters.value.keyword || undefined,
-      dispatcherId: filters.value.dispatcherId ? Number(filters.value.dispatcherId) : undefined
-    })
-
-    const data = response.data || {}
-    const list = Array.isArray(data.areaList) ? data.areaList : []
-
-    zones.value = list
-    total.value = Number(data.total ?? list.length)
-  } catch (error) {
-    zones.value = []
-    total.value = 0
+    await fetchDispatchers()
+    await fetchZones()
+    applyLocalFilters()
   } finally {
     loading.value = false
   }
+}
+
+const formatDispatcherText = (item) => {
+  return formatZoneDispatcherDisplay(item, { fallbackByArea: dispatcherMapByArea.value })
 }
 
 const removeItem = async (item) => {
@@ -102,14 +207,14 @@ const removeItem = async (item) => {
       tone: 'success'
     })
 
-    await Promise.all([fetchZones(), fetchDispatchers()])
+    await fetchAllData()
   } catch (error) {
   }
 }
 
-const applyFilters = async () => {
+const applyFilters = () => {
   filters.value.page = 1
-  await fetchZones()
+  applyLocalFilters()
 }
 
 const openZoneDetail = (item) => {
@@ -133,7 +238,7 @@ const openZoneEdit = (item) => {
 watch(
   () => [filters.value.page, filters.value.pageSize],
   () => {
-    fetchZones()
+    syncPagedZones()
   }
 )
 
@@ -145,11 +250,12 @@ watch(
       return
     }
 
-    fetchZones()
+    applyLocalFilters()
   }
 )
+
 onMounted(async () => {
-  await Promise.all([fetchZones(), fetchDispatchers()])
+  await fetchAllData()
 })
 </script>
 
@@ -157,20 +263,16 @@ onMounted(async () => {
   <div class="section-grid">
     <section class="metric-grid">
       <article class="card-surface stat-mini">
-        <span>当前页片区数</span>
-        <strong>{{ zones.length }}</strong>
+        <span>总片区数</span>
+        <strong>{{ totalZoneCount }}</strong>
       </article>
       <article class="card-surface stat-mini">
-        <span>已分配调度员</span>
+        <span>已分配调度员的片区</span>
         <strong>{{ assignedZoneCount }}</strong>
       </article>
       <article class="card-surface stat-mini">
-        <span>未分配调度员</span>
-        <strong>{{ zones.length - assignedZoneCount }}</strong>
-      </article>
-      <article class="card-surface stat-mini">
-        <span>总记录数</span>
-        <strong>{{ total }}</strong>
+        <span>未分配调度员的片区数</span>
+        <strong>{{ unassignedZoneCount }}</strong>
       </article>
     </section>
 
@@ -200,11 +302,11 @@ onMounted(async () => {
           <span class="field-label">调度员</span>
           <select v-model="filters.dispatcherId" class="field-select">
             <option value="">全部调度员</option>
+            <option :value="UNASSIGNED_FILTER">未分配</option>
             <option v-for="item in dispatchers" :key="item.id" :value="String(item.id)">{{ item.name }}</option>
           </select>
         </label>
-
-        </div>
+      </div>
 
       <div class="responsive-table">
         <table class="data-table">
@@ -225,30 +327,12 @@ onMounted(async () => {
               <td><strong>{{ item.name }}</strong></td>
               <td>{{ countPolygonPoints(item.polygon) }}</td>
               <td>{{ formatCenterText(item.polygon) }}</td>
-              <td>{{ dispatcherMapByArea[item.id]?.name || '未分配' }}</td>
+              <td>{{ formatDispatcherText(item) }}</td>
               <td>{{ formatDateTime(item.createTime) }}</td>
               <td>
                 <div class="inline-actions">
-                  <button
-                    type="button"
-                    class="button-secondary"
-                    @click="
-                      setEditorCache(CACHE_SCOPE, item);
-                      router.push({ name: 'zone-detail', params: { id: item.id } });
-                    "
-                  >
-                    详情
-                  </button>
-                  <button
-                    type="button"
-                    class="button-secondary"
-                    @click="
-                      setEditorCache(CACHE_SCOPE, item);
-                      router.push({ name: 'zone-edit', params: { id: item.id } });
-                    "
-                  >
-                    编辑
-                  </button>
+                  <button type="button" class="button-secondary" @click="openZoneDetail(item)">详情</button>
+                  <button type="button" class="button-secondary" @click="openZoneEdit(item)">编辑</button>
                   <button type="button" class="button-danger" @click="removeItem(item)">删除</button>
                 </div>
               </td>

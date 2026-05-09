@@ -5,6 +5,7 @@ import {
   getScooterList,
   getZoneList
 } from '@/api'
+import { withZoneDispatchers } from '@/utils/zoneDispatchers'
 
 const CACHE_TTL_MS = 60 * 1000
 
@@ -48,17 +49,19 @@ const normalizeParkingPoint = (item = {}) => {
 }
 
 const normalizeZone = (item = {}, dispatchersByArea = {}) => {
-  const dispatcher = dispatchersByArea[Number(item.id)] || null
-
-  return {
+  const normalized = {
     id: item.id,
     name: item.name || `Zone #${item.id}`,
     polygon: item.polygon || '',
     createTime: item.createTime || item.create_time || '',
-    dispatcher,
-    dispatcherName: dispatcher?.name || '',
-    dispatcherEmail: dispatcher?.email || ''
+    dispatchers: item.dispatchers
   }
+
+  if (!Array.isArray(normalized.dispatchers)) {
+    normalized.dispatchers = []
+  }
+
+  return withZoneDispatchers(normalized, { fallbackByArea: dispatchersByArea })
 }
 
 const normalizeNoParkingZone = (item = {}) => {
@@ -138,7 +141,11 @@ export const fetchAdminMapLayers = async ({ force = false } = {}) => {
     const dispatchersByArea = dispatchers.reduce((result, item) => {
       const areaId = Number(item.areaId)
       if (Number.isFinite(areaId) && areaId > 0) {
-        result[areaId] = item
+        if (!result[areaId]) {
+          result[areaId] = []
+        }
+
+        result[areaId].push(item)
       }
       return result
     }, {})

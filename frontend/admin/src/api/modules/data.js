@@ -8,10 +8,9 @@ export const getDataOverview = (params) => {
   })
 }
 
-export const getLiveData = (params) => {
+export const getLiveData = () => {
   return request({
     url: '/admin/data/liveData',
-    method: 'GET',
-    params
+    method: 'GET'
   })
 }

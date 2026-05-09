@@ -120,9 +120,13 @@ onMounted(fetchPoints)
 <template>
   <div class="section-grid">
     <section class="metric-grid">
+<!--      <article class="card-surface stat-mini">-->
+<!--        <span>当前页停车点数</span>-->
+<!--        <strong>{{ points.length }}</strong>-->
+<!--      </article>-->
       <article class="card-surface stat-mini">
-        <span>当前页停车点数</span>
-        <strong>{{ points.length }}</strong>
+        <span>总停车点数</span>
+        <strong>{{ total }}</strong>
       </article>
       <article class="card-surface stat-mini">
         <span>启用停车点</span>
@@ -131,10 +135,6 @@ onMounted(fetchPoints)
       <article class="card-surface stat-mini">
         <span>停用停车点</span>
         <strong>{{ disabledCount }}</strong>
-      </article>
-      <article class="card-surface stat-mini">
-        <span>总记录数</span>
-        <strong>{{ total }}</strong>
       </article>
     </section>
 

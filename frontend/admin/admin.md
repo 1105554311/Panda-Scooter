@@ -569,7 +569,13 @@ GET /admin/zones/getZoneList
         "id": 1,
         "name": "string",
         "polygon": "string",
-        "createTime": "CURRENT_TIMESTAMP"
+        "createTime": "CURRENT_TIMESTAMP",
+        "dispatchers": [
+          {
+            "id": null,
+            "name": null
+          }
+        ]
       }
     ],
     "page": 0,
@@ -599,6 +605,9 @@ GET /admin/zones/getZoneList
 |»»» name|string|true|none||区域名称|
 |»»» polygon|string¦null|true|none||多边形范围坐标|
 |»»» createTime|string(date-time)¦null|false|none||创建时间|
+|»»» dispatchers|[object]|true|none||none|
+|»»»» id|integer|true|none||主键ID|
+|»»»» name|string|true|none||姓名|
 |»» page|integer|true|none||none|
 |»» pageSize|integer|true|none||none|
 |»» total|integer|true|none||none|
@@ -611,7 +620,12 @@ POST /admin/zones/addZone
 
 ```json
 {
-  "dispatcherId": 0,
+  "dispatchers": [
+    {
+      "id": 1,
+      "name": "string"
+    }
+  ],
   "id": 1,
   "name": "string",
   "polygon": "string"
@@ -623,7 +637,9 @@ POST /admin/zones/addZone
 |名称|位置|类型|必选|中文名|说明|
 |---|---|---|---|---|---|
 |body|body|object| 是 ||none|
-|» dispatcherId|body|integer| 是 ||none|
+|» dispatchers|body|[object]| 是 ||none|
+|»» id|body|integer| 是 ||主键ID|
+|»» name|body|string| 是 ||姓名|
 |» id|body|integer| 是 ||主键ID|
 |» name|body|string| 是 ||区域名称|
 |» polygon|body|string¦null| 否 ||多边形范围坐标|
@@ -640,7 +656,12 @@ POST /admin/zones/addZone
     "id": 1,
     "name": "string",
     "polygon": "string",
-    "dispatcherId": 0,
+    "dispatchers": [
+      {
+        "id": 1,
+        "name": "string"
+      }
+    ],
     "polygonPointCount": 0,
     "createdBy": "string"
   }
@@ -665,7 +686,9 @@ POST /admin/zones/addZone
 |»» id|integer|true|none||主键ID|
 |»» name|string|true|none||区域名称|
 |»» polygon|string¦null|false|none||多边形范围坐标|
-|»» dispatcherId|integer|true|none||none|
+|»» dispatchers|[object]|true|none||none|
+|»»» id|integer|true|none||主键ID|
+|»»» name|string|true|none||姓名|
 |»» polygonPointCount|integer|false|none||none|
 |»» createdBy|string|false|none||none|
 
@@ -691,12 +714,14 @@ GET /admin/zones/getZoneDetail
     "id": 1,
     "name": "string",
     "polygon": "string",
-    "dispatcher": {
-      "id": 1,
-      "name": "string",
-      "email": "string",
-      "areaId": -2147483648
-    },
+    "dispatchers": [
+      {
+        "id": 1,
+        "name": "string",
+        "email": "string",
+        "areaId": -2147483648
+      }
+    ],
     "vehicleCount": 0
   }
 }
@@ -720,7 +745,7 @@ GET /admin/zones/getZoneDetail
 |»» id|integer|true|none||主键ID|
 |»» name|string|true|none||区域名称|
 |»» polygon|string¦null|false|none||多边形范围坐标|
-|»» dispatcher|object|true|none||none|
+|»» dispatchers|[object]|true|none||none|
 |»»» id|integer|true|none||主键ID|
 |»»» name|string|true|none||姓名|
 |»»» email|string¦null|false|none||邮箱|
@@ -767,12 +792,12 @@ POST /admin/zones/editZone
       "polygon": "string",
       "createTime": "CURRENT_TIMESTAMP"
     },
-    "dispatcher": {
-      "id": 1,
-      "name": "string",
-      "email": "string",
-      "areaId": -2147483648
-    }
+    "dispatchers": [
+      {
+        "id": 1,
+        "name": "string"
+      }
+    ]
   }
 }
 ```
@@ -797,11 +822,9 @@ POST /admin/zones/editZone
 |»»» name|string|true|none||区域名称|
 |»»» polygon|string¦null|false|none||多边形范围坐标|
 |»»» createTime|string(date-time)¦null|false|none||创建时间|
-|»» dispatcher|object¦null|true|none||none|
+|»» dispatchers|[object]¦null|true|none||none|
 |»»» id|integer|true|none||主键ID|
 |»»» name|string|true|none||姓名|
-|»»» email|string¦null|false|none||邮箱|
-|»»» areaId|integer¦null|false|none||所属区域ID|
 
 ## DELETE 删除片区
 
@@ -1230,8 +1253,8 @@ POST /admin/dispatchers/editDispatcher
 |---|---|---|---|---|---|
 |body|body|object| 是 ||none|
 |» id|body|integer| 是 ||主键ID|
-|» name|body|string| 是 ||姓名|
-|» password|body|string| 是 ||密码|
+|» name|body|string| 否 ||姓名|
+|» password|body|string| 否 ||密码|
 |» email|body|string¦null| 否 ||邮箱|
 |» areaId|body|integer¦null| 否 ||所属区域ID|
 

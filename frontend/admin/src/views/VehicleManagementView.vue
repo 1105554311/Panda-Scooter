@@ -30,6 +30,18 @@ const layers = ref({
 })
 const visibleTypes = ref(ALL_MAP_LAYERS.slice())
 
+const enabledZones = computed(() => {
+  return (layers.value.zones || []).filter((item) => Number(item?.status ?? 1) === 1)
+})
+
+const enabledNoParkingZones = computed(() => {
+  return (layers.value.noParkingZones || []).filter((item) => Number(item?.status ?? 1) === 1)
+})
+
+const enabledParkingPoints = computed(() => {
+  return (layers.value.parkingPoints || []).filter((item) => Number(item?.status ?? 1) === 1)
+})
+
 const selectedType = ref(TYPE_ALL)
 const selectedIdByType = ref({
   [TYPE_ZONE]: '',
@@ -65,9 +77,9 @@ const allOptionLabelMap = {
 
 const itemListByType = computed(() => {
   return {
-    [TYPE_ZONE]: layers.value.zones,
-    [TYPE_NO_PARKING]: layers.value.noParkingZones,
-    [TYPE_PARKING_POINT]: layers.value.parkingPoints,
+    [TYPE_ZONE]: enabledZones.value,
+    [TYPE_NO_PARKING]: enabledNoParkingZones.value,
+    [TYPE_PARKING_POINT]: enabledParkingPoints.value,
     [TYPE_SCOOTER]: layers.value.scooters
   }
 })
@@ -391,9 +403,9 @@ onMounted(async () => {
         <section class="page-surface map-panel">
           <ScooterMapPreview
             :scooters="layers.scooters"
-            :zones="layers.zones"
-            :no-parking-zones="layers.noParkingZones"
-            :parking-points="layers.parkingPoints"
+            :zones="enabledZones"
+            :no-parking-zones="enabledNoParkingZones"
+            :parking-points="enabledParkingPoints"
             :focus-type="selectedType"
             :focus-id="currentSelectedId"
             :focus-zone-id="selectedType === TYPE_ZONE ? (selectedIds.zoneId || '') : ''"

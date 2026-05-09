@@ -4,13 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import MapLayerToggleBar from '@/components/MapLayerToggleBar.vue'
 import ZoneMapEditor from '@/components/ZoneMapEditor.vue'
 import { addZone, editZone, getDispatcherList, getZoneDetail } from '@/api'
-import {
-  ALL_MAP_LAYERS,
-  MAP_LAYER_NO_PARKING,
-  MAP_LAYER_PARKING_POINT,
-  MAP_LAYER_SCOOTER,
-  MAP_LAYER_ZONE
-} from '@/utils/adminMapVisuals'
+import { ALL_MAP_LAYERS, MAP_LAYER_ZONE } from '@/utils/adminMapVisuals'
 import { useUiStore } from '@/stores/ui'
 import { getEditorCache, removeEditorCache } from '@/utils/editorCache'
 import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
@@ -20,6 +14,7 @@ import {
   formatZonePolygonForApi,
   normalizeZonePolygonForEditor
 } from '@/utils/noParkingPolygon'
+import { getZoneDispatchers } from '@/utils/zoneDispatchers'
 
 const route = useRoute()
 const router = useRouter()
@@ -40,7 +35,7 @@ const form = ref({
   id: '',
   name: '',
   polygon: '',
-  dispatcherId: ''
+  dispatcherIds: []
 })
 
 const otherZones = computed(() => {
@@ -58,12 +53,29 @@ const polygonCenterText = computed(() => {
 const pageTitle = computed(() => (editing.value ? '编辑片区' : '新增片区'))
 
 const applyRecord = (item) => {
+  const selectedDispatchers = getZoneDispatchers(item)
+
   form.value = {
     id: item.id,
     name: item.name || '',
     polygon: item.polygon ? normalizeZonePolygonForEditor(item.polygon) : '',
-    dispatcherId: item.dispatcher?.id ? String(item.dispatcher.id) : ''
+    dispatcherIds: selectedDispatchers.map((dispatcher) => String(dispatcher.id))
   }
+}
+
+const buildDispatchersPayload = () => {
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(form.value.dispatcherIds) ? form.value.dispatcherIds : [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0)
+    )
+  )
+
+  return ids.map((id) => {
+    const matched = dispatchers.value.find((item) => Number(item.id) === id)
+    return matched?.name ? { id, name: matched.name } : { id }
+  })
 }
 
 const fetchDispatchers = async () => {
@@ -166,7 +178,7 @@ const submit = async () => {
     const payload = {
       name: form.value.name.trim(),
       polygon: formatZonePolygonForApi(validation.points),
-      dispatcherId: form.value.dispatcherId ? Number(form.value.dispatcherId) : undefined
+      dispatchers: buildDispatchersPayload()
     }
 
     if (editing.value) {
@@ -250,8 +262,7 @@ onMounted(async () => {
 
             <label class="form-field span-12">
               <span class="field-label">调度员</span>
-              <select v-model="form.dispatcherId" class="field-select">
-                <option value="">未分配</option>
+              <select v-model="form.dispatcherIds" class="field-select" multiple>
                 <option v-for="item in dispatchers" :key="item.id" :value="String(item.id)">
                   {{ item.name }}{{ item.areaId ? ` / 当前片区 ${item.areaId}` : '' }}
                 </option>

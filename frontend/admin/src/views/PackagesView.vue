@@ -4,18 +4,13 @@ import BaseModal from '@/components/BaseModal.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import { addPackage, deletePackage, editPackage, getPackageList } from '@/api'
 import { useUiStore } from '@/stores/ui'
-import {
-  formatCurrency,
-  formatDateTime,
-  formatPackageStatus,
-  formatPackageType
-} from '@/utils/format'
+import { formatCurrency, formatDateTime, formatPackageType } from '@/utils/format'
 
 const uiStore = useUiStore()
 
 const createDefaultFilters = () => ({
   keyword: '',
-  status: '',
+  type: '',
   page: 1,
   pageSize: 10
 })
@@ -29,48 +24,86 @@ const createDefaultForm = () => ({
 })
 
 const filters = ref(createDefaultFilters())
-const packages = ref([])
-const total = ref(0)
+const allPackages = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const modalOpen = ref(false)
 const editing = ref(false)
 const form = ref(createDefaultForm())
 
-const activeCount = computed(() => {
-  return packages.value.filter((item) => Number(item.status) === 1).length
+const totalCount = computed(() => allPackages.value.length)
+
+const monthCount = computed(() => {
+  return allPackages.value.filter((item) => Number(item.type) === 1).length
 })
 
-const averagePrice = computed(() => {
-  if (!packages.value.length) {
-    return 0
+const quarterCount = computed(() => {
+  return allPackages.value.filter((item) => Number(item.type) === 2).length
+})
+
+const yearCount = computed(() => {
+  return allPackages.value.filter((item) => Number(item.type) === 3).length
+})
+
+const filteredPackages = computed(() => {
+  if (!filters.value.type) {
+    return allPackages.value
   }
 
-  const totalPrice = packages.value.reduce((result, item) => result + Number(item.price || 0), 0)
-  return totalPrice / packages.value.length
+  const type = Number(filters.value.type)
+  return allPackages.value.filter((item) => Number(item.type) === type)
 })
+
+const pagedPackages = computed(() => {
+  const page = Math.max(1, Number(filters.value.page) || 1)
+  const pageSize = Math.max(1, Number(filters.value.pageSize) || 10)
+  const start = (page - 1) * pageSize
+  return filteredPackages.value.slice(start, start + pageSize)
+})
+
+const listTotal = computed(() => filteredPackages.value.length)
 
 const fetchPackages = async () => {
   loading.value = true
 
   try {
-    const response = await getPackageList({
-      page: filters.value.page,
-      pageSize: filters.value.pageSize,
-      keyword: filters.value.keyword || undefined,
-      status: filters.value.status || undefined
-    })
+    const keyword = filters.value.keyword || undefined
+    const pageSize = 100
+    let page = 1
+    let total = 0
+    const records = []
 
-    const data = response.data || {}
-    const list = Array.isArray(data.list) ? data.list : []
+    do {
+      const response = await getPackageList({
+        page,
+        pageSize,
+        keyword
+      })
 
-    packages.value = list
-    total.value = Number(data.total ?? list.length)
+      const data = response.data || {}
+      const list = Array.isArray(data.list) ? data.list : []
+      total = Number(data.total ?? 0)
+
+      records.push(...list)
+      page += 1
+
+      if (!list.length) {
+        break
+      }
+    } while (records.length < total)
+
+    allPackages.value = records
   } catch (error) {
-    packages.value = []
-    total.value = 0
+    allPackages.value = []
   } finally {
     loading.value = false
+  }
+}
+
+const ensurePageInRange = () => {
+  const maxPage = Math.max(1, Math.ceil(listTotal.value / (Number(filters.value.pageSize) || 10)))
+  if (filters.value.page > maxPage) {
+    filters.value.page = maxPage
   }
 }
 
@@ -144,7 +177,7 @@ const submit = async () => {
 
     modalOpen.value = false
     await fetchPackages()
-  } catch (error) {
+    ensurePageInRange()
   } finally {
     saving.value = false
   }
@@ -174,8 +207,32 @@ const removeItem = async (item) => {
     })
 
     await fetchPackages()
+    ensurePageInRange()
   } catch (error) {
   }
+}
+
+const getDailyAveragePrice = (item) => {
+  const price = Number(item?.price)
+  const type = Number(item?.type)
+
+  if (!Number.isFinite(price)) {
+    return '--'
+  }
+
+  if (type === 1) {
+    return formatCurrency(price / 30)
+  }
+
+  if (type === 2) {
+    return formatCurrency(price / 90)
+  }
+
+  if (type === 3) {
+    return formatCurrency(price / 365)
+  }
+
+  return '--'
 }
 
 const applyFilters = async () => {
@@ -184,14 +241,21 @@ const applyFilters = async () => {
 }
 
 watch(
-  () => [filters.value.page, filters.value.pageSize],
+  () => [filters.value.page, filters.value.pageSize, listTotal.value],
   () => {
-    fetchPackages()
+    ensurePageInRange()
   }
 )
 
 watch(
-  () => [filters.value.keyword, filters.value.status],
+  () => filters.value.type,
+  () => {
+    filters.value.page = 1
+  }
+)
+
+watch(
+  () => filters.value.keyword,
   () => {
     if (filters.value.page !== 1) {
       filters.value.page = 1
@@ -201,6 +265,7 @@ watch(
     fetchPackages()
   }
 )
+
 onMounted(fetchPackages)
 </script>
 
@@ -208,20 +273,20 @@ onMounted(fetchPackages)
   <div class="section-grid">
     <section class="metric-grid">
       <article class="card-surface stat-mini">
-        <span>当前页套餐数</span>
-        <strong>{{ packages.length }}</strong>
+        <span>总套餐数</span>
+        <strong>{{ totalCount }}</strong>
       </article>
       <article class="card-surface stat-mini">
-        <span>启用套餐</span>
-        <strong>{{ activeCount }}</strong>
+        <span>月卡数量</span>
+        <strong>{{ monthCount }}</strong>
       </article>
       <article class="card-surface stat-mini">
-        <span>平均价格</span>
-        <strong>{{ formatCurrency(averagePrice) }}</strong>
+        <span>季卡数量</span>
+        <strong>{{ quarterCount }}</strong>
       </article>
       <article class="card-surface stat-mini">
-        <span>总记录数</span>
-        <strong>{{ total }}</strong>
+        <span>年卡数量</span>
+        <strong>{{ yearCount }}</strong>
       </article>
     </section>
 
@@ -237,7 +302,7 @@ onMounted(fetchPackages)
 
       <div class="toolbar">
         <label class="form-field toolbar-grow">
-          <span class="field-label">关键字</span>
+          <span class="field-label">关键词</span>
           <input
             v-model.trim="filters.keyword"
             class="field-input"
@@ -248,15 +313,15 @@ onMounted(fetchPackages)
         </label>
 
         <label class="form-field">
-          <span class="field-label">状态</span>
-          <select v-model="filters.status" class="field-select">
+          <span class="field-label">套餐类型</span>
+          <select v-model="filters.type" class="field-select">
             <option value="">全部</option>
-            <option value="1">启用</option>
-            <option value="0">停用</option>
+            <option value="1">月卡</option>
+            <option value="2">季卡</option>
+            <option value="3">年卡</option>
           </select>
         </label>
-
-        </div>
+      </div>
 
       <div class="responsive-table">
         <table class="data-table">
@@ -266,13 +331,13 @@ onMounted(fetchPackages)
               <th>套餐</th>
               <th>类型</th>
               <th>价格</th>
-              <th>状态</th>
+              <th>日均价</th>
               <th>创建时间</th>
               <th>操作</th>
             </tr>
           </thead>
-          <tbody v-if="packages.length">
-            <tr v-for="item in packages" :key="item.id">
+          <tbody v-if="pagedPackages.length">
+            <tr v-for="item in pagedPackages" :key="item.id">
               <td>#{{ item.id }}</td>
               <td>
                 <strong>{{ item.title }}</strong>
@@ -280,11 +345,7 @@ onMounted(fetchPackages)
               </td>
               <td>{{ formatPackageType(item.type) }}</td>
               <td>{{ formatCurrency(item.price) }}</td>
-              <td>
-                <span class="status-pill" :class="formatPackageStatus(item.status).tone">
-                  {{ formatPackageStatus(item.status).text }}
-                </span>
-              </td>
+              <td>{{ getDailyAveragePrice(item) }}</td>
               <td>{{ formatDateTime(item.createTime) }}</td>
               <td>
                 <div class="inline-actions">
@@ -296,13 +357,13 @@ onMounted(fetchPackages)
           </tbody>
         </table>
 
-        <div v-if="!packages.length && !loading" class="empty-state">暂无套餐数据。</div>
+        <div v-if="!pagedPackages.length && !loading" class="empty-state">暂无套餐数据。</div>
       </div>
 
       <PaginationBar
         :page="filters.page"
         :page-size="filters.pageSize"
-        :total="total"
+        :total="listTotal"
         :loading="loading"
         @update:page="filters.page = $event"
         @update:page-size="

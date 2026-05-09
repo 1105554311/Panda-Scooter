@@ -119,8 +119,8 @@ onMounted(fetchZones)
   <div class="section-grid">
     <section class="metric-grid">
       <article class="card-surface stat-mini">
-        <span>当前页禁停区数</span>
-        <strong>{{ zones.length }}</strong>
+        <span>总禁停区数</span>
+        <strong>{{ total }}</strong>
       </article>
       <article class="card-surface stat-mini">
         <span>启用禁停区</span>

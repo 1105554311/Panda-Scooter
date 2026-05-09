@@ -14,6 +14,10 @@ import { formatDateTime } from '@/utils/format'
 
 const uiStore = useUiStore()
 
+const UNASSIGNED_FILTER = '__UNASSIGNED__'
+const FULL_FETCH_PAGE_SIZE = 200
+const MAX_FETCH_PAGES = 200
+
 const createDefaultFilters = () => ({
   keyword: '',
   areaId: '',
@@ -31,6 +35,8 @@ const createDefaultForm = () => ({
 
 const filters = ref(createDefaultFilters())
 const dispatchers = ref([])
+const rawAllDispatchers = ref([])
+const filteredDispatchers = ref([])
 const areas = ref([])
 const total = ref(0)
 const loading = ref(false)
@@ -39,49 +45,152 @@ const modalOpen = ref(false)
 const editing = ref(false)
 const form = ref(createDefaultForm())
 
+const normalizePositiveId = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? num : null
+}
+
+const isAssignedAreaId = (value) => {
+  return normalizePositiveId(value) !== null
+}
+
 const areaMap = computed(() => {
   return areas.value.reduce((result, item) => {
-    result[item.id] = item.name
+    const areaId = normalizePositiveId(item.id)
+    if (areaId) {
+      result[areaId] = item.name
+    }
     return result
   }, {})
 })
 
-const assignedCount = computed(() => {
-  return dispatchers.value.filter((item) => item.areaId).length
+const totalDispatcherCount = computed(() => rawAllDispatchers.value.length)
+
+const assignedDispatcherCount = computed(() => {
+  return rawAllDispatchers.value.filter((item) => isAssignedAreaId(item.areaId)).length
 })
+
+const unassignedDispatcherCount = computed(() => {
+  return Math.max(totalDispatcherCount.value - assignedDispatcherCount.value, 0)
+})
+
+const getAreaDisplayText = (item) => {
+  const areaId = normalizePositiveId(item.areaId)
+
+  if (!areaId) {
+    return '未分配'
+  }
+
+  return areaMap.value[areaId] || `片区 ${areaId}`
+}
+
+const fetchAllItems = async (requester, listKey) => {
+  let page = 1
+  let apiTotal = null
+  const merged = []
+
+  while (page <= MAX_FETCH_PAGES) {
+    const response = await requester({
+      page,
+      pageSize: FULL_FETCH_PAGE_SIZE
+    })
+
+    const data = response.data || {}
+    const list = Array.isArray(data[listKey]) ? data[listKey] : []
+    const totalFromApi = Number(data.total)
+
+    if (Number.isFinite(totalFromApi) && totalFromApi >= 0) {
+      apiTotal = totalFromApi
+    }
+
+    merged.push(...list)
+
+    if (!list.length) {
+      break
+    }
+
+    if (apiTotal !== null && merged.length >= apiTotal) {
+      break
+    }
+
+    if (list.length < FULL_FETCH_PAGE_SIZE) {
+      break
+    }
+
+    page += 1
+  }
+
+  return merged
+}
 
 const fetchAreas = async () => {
   try {
-    const response = await getZoneList({
-      page: 1,
-      pageSize: 100
-    })
-
-    areas.value = response.data?.areaList || []
+    areas.value = await fetchAllItems(getZoneList, 'areaList')
   } catch (error) {
     areas.value = []
   }
 }
 
-const fetchDispatchers = async () => {
+const fetchDispatchersData = async () => {
+  try {
+    rawAllDispatchers.value = await fetchAllItems(getDispatcherList, 'dispatcherList')
+  } catch (error) {
+    rawAllDispatchers.value = []
+  }
+}
+
+const syncPagedDispatchers = () => {
+  const pageSize = Number(filters.value.pageSize) > 0 ? Number(filters.value.pageSize) : 10
+  const maxPage = Math.max(1, Math.ceil(filteredDispatchers.value.length / pageSize))
+  const normalizedPage = Number(filters.value.page) > 0 ? Number(filters.value.page) : 1
+  const currentPage = Math.min(normalizedPage, maxPage)
+
+  if (currentPage !== normalizedPage) {
+    filters.value.page = currentPage
+    return
+  }
+
+  const start = (currentPage - 1) * pageSize
+  dispatchers.value = filteredDispatchers.value.slice(start, start + pageSize)
+  total.value = filteredDispatchers.value.length
+}
+
+const applyLocalFilters = () => {
+  const keyword = filters.value.keyword.trim().toLowerCase()
+  const selectedAreaId = filters.value.areaId
+
+  let next = rawAllDispatchers.value.slice()
+
+  if (keyword) {
+    next = next.filter((item) => {
+      const name = String(item.name || '').toLowerCase()
+      const email = String(item.email || '').toLowerCase()
+      return name.includes(keyword) || email.includes(keyword)
+    })
+  }
+
+  if (selectedAreaId === UNASSIGNED_FILTER) {
+    next = next.filter((item) => !isAssignedAreaId(item.areaId))
+  } else if (selectedAreaId) {
+    const areaId = normalizePositiveId(selectedAreaId)
+
+    if (!areaId) {
+      next = []
+    } else {
+      next = next.filter((item) => normalizePositiveId(item.areaId) === areaId)
+    }
+  }
+
+  filteredDispatchers.value = next
+  syncPagedDispatchers()
+}
+
+const fetchAllData = async () => {
   loading.value = true
 
   try {
-    const response = await getDispatcherList({
-      page: filters.value.page,
-      pageSize: filters.value.pageSize,
-      keyword: filters.value.keyword || undefined,
-      areaId: filters.value.areaId ? Number(filters.value.areaId) : undefined
-    })
-
-    const data = response.data || {}
-    const list = Array.isArray(data.dispatcherList) ? data.dispatcherList : []
-
-    dispatchers.value = list
-    total.value = Number(data.total ?? list.length)
-  } catch (error) {
-    dispatchers.value = []
-    total.value = 0
+    await Promise.all([fetchAreas(), fetchDispatchersData()])
+    applyLocalFilters()
   } finally {
     loading.value = false
   }
@@ -100,7 +209,7 @@ const openEdit = (item) => {
     name: item.name || '',
     email: item.email || '',
     password: '',
-    areaId: item.areaId ? String(item.areaId) : ''
+    areaId: isAssignedAreaId(item.areaId) ? String(normalizePositiveId(item.areaId)) : ''
   }
   modalOpen.value = true
 }
@@ -122,7 +231,9 @@ const submit = async () => {
     return
   }
 
-  if (!form.value.password.trim()) {
+  const password = form.value.password.trim()
+
+  if (!editing.value && !password) {
     uiStore.pushToast({
       message: '请输入登录密码',
       tone: 'warning'
@@ -136,8 +247,11 @@ const submit = async () => {
     const payload = {
       name: form.value.name.trim(),
       email: form.value.email.trim(),
-      password: form.value.password.trim(),
       areaId: form.value.areaId ? Number(form.value.areaId) : undefined
+    }
+
+    if (password) {
+      payload.password = password
     }
 
     if (editing.value) {
@@ -155,7 +269,7 @@ const submit = async () => {
     })
 
     modalOpen.value = false
-    await fetchDispatchers()
+    await fetchAllData()
   } catch (error) {
   } finally {
     saving.value = false
@@ -186,20 +300,20 @@ const removeItem = async (item) => {
       tone: 'success'
     })
 
-    await fetchDispatchers()
+    await fetchAllData()
   } catch (error) {
   }
 }
 
-const applyFilters = async () => {
+const applyFilters = () => {
   filters.value.page = 1
-  await fetchDispatchers()
+  applyLocalFilters()
 }
 
 watch(
   () => [filters.value.page, filters.value.pageSize],
   () => {
-    fetchDispatchers()
+    syncPagedDispatchers()
   }
 )
 
@@ -211,12 +325,12 @@ watch(
       return
     }
 
-    fetchDispatchers()
+    applyLocalFilters()
   }
 )
+
 onMounted(async () => {
-  await fetchAreas()
-  await fetchDispatchers()
+  await fetchAllData()
 })
 </script>
 
@@ -224,20 +338,16 @@ onMounted(async () => {
   <div class="section-grid">
     <section class="metric-grid">
       <article class="card-surface stat-mini">
-        <span>当前页调度员数</span>
-        <strong>{{ dispatchers.length }}</strong>
+        <span>调度员数</span>
+        <strong>{{ totalDispatcherCount }}</strong>
       </article>
       <article class="card-surface stat-mini">
-        <span>已分配片区</span>
-        <strong>{{ assignedCount }}</strong>
+        <span>已分配片区的调度员数</span>
+        <strong>{{ assignedDispatcherCount }}</strong>
       </article>
       <article class="card-surface stat-mini">
-        <span>未分配片区</span>
-        <strong>{{ dispatchers.length - assignedCount }}</strong>
-      </article>
-      <article class="card-surface stat-mini">
-        <span>总记录数</span>
-        <strong>{{ total }}</strong>
+        <span>未分配片区的调度员数</span>
+        <strong>{{ unassignedDispatcherCount }}</strong>
       </article>
     </section>
 
@@ -267,11 +377,11 @@ onMounted(async () => {
           <span class="field-label">片区</span>
           <select v-model="filters.areaId" class="field-select">
             <option value="">全部片区</option>
+            <option :value="UNASSIGNED_FILTER">未分配</option>
             <option v-for="item in areas" :key="item.id" :value="String(item.id)">{{ item.name }}</option>
           </select>
         </label>
-
-        </div>
+      </div>
 
       <div class="responsive-table">
         <table class="data-table">
@@ -290,7 +400,7 @@ onMounted(async () => {
               <td>#{{ item.id }}</td>
               <td>{{ item.name }}</td>
               <td>{{ item.email || '--' }}</td>
-              <td>{{ areaMap[item.areaId] || (item.areaId ? `片区 ${item.areaId}` : '未分配') }}</td>
+              <td>{{ getAreaDisplayText(item) }}</td>
               <td>{{ formatDateTime(item.createTime) }}</td>
               <td>
                 <div class="inline-actions">
@@ -335,8 +445,13 @@ onMounted(async () => {
         </label>
 
         <label class="form-field span-6">
-          <span class="field-label">登录密码</span>
-          <input v-model="form.password" class="field-input" type="password" placeholder="请输入登录密码" />
+          <span class="field-label">登录密码{{ editing ? '（可留空）' : '' }}</span>
+          <input
+            v-model="form.password"
+            class="field-input"
+            type="password"
+            :placeholder="editing ? '留空则不修改密码' : '请输入登录密码'"
+          />
         </label>
 
         <label class="form-field span-6">

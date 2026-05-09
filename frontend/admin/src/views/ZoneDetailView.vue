@@ -11,6 +11,7 @@ import { getEditorCache } from '@/utils/editorCache'
 import { countPolygonPoints } from '@/utils/polygon'
 import { ALL_MAP_LAYERS, MAP_LAYER_ZONE } from '@/utils/adminMapVisuals'
 import { formatLatLngCenterTextFromRawPolygon, normalizeZonePolygonForEditor } from '@/utils/noParkingPolygon'
+import { getZoneDispatchers, withZoneDispatchers } from '@/utils/zoneDispatchers'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,6 +26,28 @@ const noParkingZones = ref([])
 const scooters = ref([])
 const parkingPoints = ref([])
 const visibleTypes = ref(ALL_MAP_LAYERS.slice())
+
+const detailDispatchers = computed(() => {
+  return getZoneDispatchers(detail.value || {})
+})
+
+const dispatcherNameText = computed(() => {
+  if (!detailDispatchers.value.length) {
+    return '未分配'
+  }
+
+  return detailDispatchers.value
+    .map((item, index) => item.name || `调度员${index + 1}`)
+    .join('、')
+})
+
+const dispatcherEmailText = computed(() => {
+  const emails = detailDispatchers.value
+    .map((item) => item.email)
+    .filter((item) => Boolean(item))
+
+  return emails.length ? emails.join('、') : '暂无邮箱'
+})
 
 const centerText = computed(() => {
   return formatLatLngCenterTextFromRawPolygon(detail.value?.polygon)
@@ -58,14 +81,14 @@ const fetchDetail = async () => {
   try {
     const cachedItem = getEditorCache(CACHE_SCOPE, zoneId.value)
     if (cachedItem) {
-      detail.value = cachedItem
+      detail.value = withZoneDispatchers(cachedItem)
     }
 
     const response = await getZoneDetail({
       areaId: zoneId.value,
       id: zoneId.value
     })
-    detail.value = response.data || detail.value
+    detail.value = withZoneDispatchers(response.data || detail.value || {})
   } catch (error) {
     if (!detail.value) {
       uiStore.pushToast({
@@ -107,8 +130,8 @@ onMounted(async () => {
         </div>
         <div class="detail-card">
           <span class="detail-label">调度员</span>
-          <strong>{{ detail.dispatcher?.name || '未分配' }}</strong>
-          <p class="detail-subtext">{{ detail.dispatcher?.email || '暂无邮箱' }}</p>
+          <strong>{{ dispatcherNameText }}</strong>
+          <p class="detail-subtext">{{ dispatcherEmailText }}</p>
         </div>
         <div class="detail-card">
           <span class="detail-label">顶点数</span>
