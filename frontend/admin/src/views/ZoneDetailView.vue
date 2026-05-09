@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ZoneMapEditor from '@/components/ZoneMapEditor.vue'
 import { getZoneDetail } from '@/api'
 import { useUiStore } from '@/stores/ui'
+import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 import { formatDateTime } from '@/utils/format'
 import { getEditorCache } from '@/utils/editorCache'
 import { countPolygonPoints, formatPolygonPoints, getPolygonCenter } from '@/utils/polygon'
@@ -16,6 +17,10 @@ const CACHE_SCOPE = 'zone'
 const zoneId = computed(() => Number(route.params.id))
 const loading = ref(false)
 const detail = ref(null)
+const zones = ref([])
+const noParkingZones = ref([])
+const scooters = ref([])
+const parkingPoints = ref([])
 
 const centerText = computed(() => {
   const center = getPolygonCenter(detail.value?.polygon)
@@ -25,6 +30,23 @@ const centerText = computed(() => {
 
   return `${center.longitude.toFixed(5)}, ${center.latitude.toFixed(5)}`
 })
+
+const fetchMapLayers = async () => {
+  try {
+    const layers = await fetchAdminMapLayers({
+      force: true
+    })
+    zones.value = layers.zones || []
+    noParkingZones.value = layers.noParkingZones || []
+    scooters.value = layers.scooters || []
+    parkingPoints.value = layers.parkingPoints || []
+  } catch (error) {
+    zones.value = []
+    noParkingZones.value = []
+    scooters.value = []
+    parkingPoints.value = []
+  }
+}
 
 const fetchDetail = async () => {
   if (!Number.isFinite(zoneId.value)) {
@@ -58,7 +80,9 @@ const fetchDetail = async () => {
   }
 }
 
-onMounted(fetchDetail)
+onMounted(async () => {
+  await Promise.all([fetchMapLayers(), fetchDetail()])
+})
 </script>
 
 <template>
@@ -67,7 +91,7 @@ onMounted(fetchDetail)
       <div class="detail-header">
         <div>
           <h2 class="panel-title">片区详情</h2>
-          <p class="panel-description">详情页已独立展示，地图和原始坐标不再挤在弹窗里。</p>
+          <p class="panel-description">详情地图已叠加展示全部片区、禁停区、车辆和停车点，便于比对。</p>
         </div>
         <div class="button-row">
           <button type="button" class="button-secondary" @click="router.push({ name: 'zones' })">返回列表</button>
@@ -108,6 +132,11 @@ onMounted(fetchDetail)
       <section class="page-surface map-panel">
         <ZoneMapEditor
           :model-value="detail.polygon ? formatPolygonPoints(detail.polygon) : ''"
+          :zones="zones.filter((item) => String(item.id) !== String(detail.id))"
+          :no-parking-zones="noParkingZones"
+          :scooters="scooters"
+          :parking-points="parkingPoints"
+          :active-zone-id="detail.id"
           :readonly="true"
           :height="520"
         />

@@ -11,6 +11,11 @@ const form = ref({
   basePrice: '',
   billingInterval: ''
 })
+const currentRules = ref({
+  pricePerMin: '',
+  basePrice: '',
+  billingInterval: ''
+})
 const loading = ref(false)
 const saving = ref(false)
 
@@ -32,7 +37,11 @@ const fetchRules = async () => {
       basePrice: data.basePrice ?? '',
       billingInterval: data.billingInterval ?? ''
     }
-  } catch (error) {
+    currentRules.value = {
+      pricePerMin: data.pricePerMin ?? '',
+      basePrice: data.basePrice ?? '',
+      billingInterval: data.billingInterval ?? ''
+    }
   } finally {
     loading.value = false
   }
@@ -76,11 +85,16 @@ const submit = async () => {
       billingInterval
     })
 
+    currentRules.value = {
+      pricePerMin,
+      basePrice,
+      billingInterval
+    }
+
     uiStore.pushToast({
       message: '定价策略已保存',
       tone: 'success'
     })
-  } catch (error) {
   } finally {
     saving.value = false
   }
@@ -96,7 +110,25 @@ onMounted(fetchRules)
         <div>
           <h2 class="panel-title">定价策略</h2>
         </div>
+      </div>
+
+      <section class="current-pricing-card">
+        <h3>当前定价策略</h3>
+        <div class="current-pricing-grid">
+          <div class="current-pricing-item">
+            <span>分钟单价</span>
+            <strong>{{ formatCurrency(currentRules.pricePerMin || 0) }}</strong>
+          </div>
+          <div class="current-pricing-item">
+            <span>起步价</span>
+            <strong>{{ formatCurrency(currentRules.basePrice || 0) }}</strong>
+          </div>
+          <div class="current-pricing-item">
+            <span>计费间隔</span>
+            <strong>{{ currentRules.billingInterval || '--' }} 分钟</strong>
+          </div>
         </div>
+      </section>
 
       <div class="form-grid">
         <label class="form-field span-4">
@@ -167,7 +199,6 @@ onMounted(fetchRules)
           <strong>{{ ridePreviewPrice }}</strong>
         </div>
       </div>
-
     </section>
   </div>
 </template>
@@ -181,6 +212,45 @@ onMounted(fetchRules)
 
 .pricing-panel {
   padding: 28px;
+}
+
+.current-pricing-card {
+  margin-bottom: 20px;
+  border: 1px solid #e5e5e2;
+  background: #fafaf8;
+  padding: 16px;
+}
+
+.current-pricing-card h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.current-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.current-pricing-item {
+  border: 1px solid #ecece8;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.current-pricing-item span {
+  display: block;
+  color: #737373;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.current-pricing-item strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 400;
 }
 
 .pricing-actions {
@@ -219,6 +289,10 @@ onMounted(fetchRules)
 
 @media (max-width: 1080px) {
   .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .current-pricing-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -1,10 +1,13 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import ScooterMapPreview from '@/components/ScooterMapPreview.vue'
-import { getScooterList, getZoneList } from '@/api'
+import { getScooterList } from '@/api'
+import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 import { formatDateTime, formatNumber } from '@/utils/format'
 
 const areas = ref([])
+const noParkingZones = ref([])
+const parkingPoints = ref([])
 const loadingAreas = ref(false)
 const loadingScooters = ref(false)
 const scooterAreaId = ref('')
@@ -25,12 +28,13 @@ const normalizeScooterRecord = (item) => {
   return {
     id: item.id,
     code: item.code || '--',
+    areaId: Number(item.areaId ?? item.area_id),
     rideStatus,
     faultStatus,
     battery: Number.isFinite(battery) ? battery : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
     latitude: Number.isFinite(latitude) ? latitude : null,
-    createTime: item.createTime
+    createTime: item.createTime || item.create_time || ''
   }
 }
 
@@ -42,15 +46,6 @@ const scooterSummary = computed(() => {
   const fault = list.filter((item) => item.faultStatus === 1).length
 
   return { online, fault }
-})
-
-const selectedAreaName = computed(() => {
-  if (!scooterAreaId.value) {
-    return '全部片区'
-  }
-
-  const area = areas.value.find((item) => String(item.id) === String(scooterAreaId.value))
-  return area?.name || '--'
 })
 
 const selectedScooterDetail = computed(() => {
@@ -65,17 +60,20 @@ const selectedScooterDetail = computed(() => {
   }
 })
 
-const fetchAreas = async () => {
+const fetchAreasAndLayers = async () => {
   loadingAreas.value = true
 
   try {
-    const response = await getZoneList({
-      page: 1,
-      pageSize: 100
+    const layers = await fetchAdminMapLayers({
+      force: true
     })
-    areas.value = response.data?.areaList || []
+    areas.value = layers.zones || []
+    noParkingZones.value = layers.noParkingZones || []
+    parkingPoints.value = layers.parkingPoints || []
   } catch (error) {
     areas.value = []
+    noParkingZones.value = []
+    parkingPoints.value = []
   } finally {
     loadingAreas.value = false
   }
@@ -91,6 +89,7 @@ const fetchScooters = async () => {
     })
 
     let list = response.data?.areaList
+
     if (!Array.isArray(list) && Number.isFinite(selectedArea)) {
       const fallbackResponse = await getScooterList({ areaId: selectedArea })
       list = fallbackResponse.data?.areaList
@@ -114,7 +113,7 @@ watch(
 )
 
 onMounted(async () => {
-  await fetchAreas()
+  await fetchAreasAndLayers()
   await fetchScooters()
 })
 </script>
@@ -128,73 +127,84 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="toolbar vehicle-manage-toolbar">
-        <label class="form-field toolbar-grow">
-          <span class="field-label">片区</span>
-          <select v-model="scooterAreaId" class="field-select" :disabled="loadingAreas || loadingScooters">
-            <option value="">全部片区</option>
-            <option v-for="item in areas" :key="item.id" :value="String(item.id)">{{ item.name }}</option>
-          </select>
-        </label>
-        <article class="card-surface mini-metric">
-          <span>在线车辆数</span>
-          <strong>{{ formatNumber(scooterSummary.online) }}</strong>
-        </article>
-        <article class="card-surface mini-metric">
-          <span>故障车辆数</span>
-          <strong>{{ formatNumber(scooterSummary.fault) }}</strong>
-        </article>
-      </div>
-
       <div class="vehicle-manage-grid">
         <section class="page-surface map-panel">
           <ScooterMapPreview
             :scooters="scooters"
+            :zones="areas"
+            :no-parking-zones="noParkingZones"
+            :parking-points="parkingPoints"
+            :focus-zone-id="scooterAreaId || ''"
             :selected-scooter-id="selectedScooter?.id"
-            :height="520"
+            :height="620"
             @select="selectedScooter = $event"
           />
         </section>
 
-        <aside class="page-surface vehicle-detail-panel">
-          <h3>车辆详情</h3>
-          <p class="detail-kicker">当前片区：{{ selectedAreaName }}</p>
+        <aside class="page-surface vehicle-side-panel">
+          <section class="side-card">
+            <h3 class="side-title">选择片区</h3>
+            <label class="form-field">
+              <span class="field-label">片区</span>
+              <select v-model="scooterAreaId" class="field-select" :disabled="loadingAreas || loadingScooters">
+                <option value="">全部片区</option>
+                <option v-for="item in areas" :key="item.id" :value="String(item.id)">{{ item.name }}</option>
+              </select>
+            </label>
+          </section>
 
-          <div v-if="selectedScooterDetail" class="detail-grid">
-            <div class="detail-item">
-              <span>车辆编码</span>
-              <strong>{{ selectedScooterDetail.code }}</strong>
+          <section class="side-card">
+            <h3 class="side-title">车辆统计</h3>
+            <div class="summary-grid">
+              <article class="mini-metric">
+                <span>在线车辆数</span>
+                <strong>{{ formatNumber(scooterSummary.online) }}</strong>
+              </article>
+              <article class="mini-metric">
+                <span>故障车辆数</span>
+                <strong>{{ formatNumber(scooterSummary.fault) }}</strong>
+              </article>
             </div>
-            <div class="detail-item">
-              <span>车辆 ID</span>
-              <strong>#{{ selectedScooterDetail.id }}</strong>
+          </section>
+
+          <section class="side-card">
+            <h3 class="side-title">车辆详情</h3>
+            <div v-if="selectedScooterDetail" class="detail-grid">
+              <div class="detail-item">
+                <span>车辆编码</span>
+                <strong>{{ selectedScooterDetail.code }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>车辆 ID</span>
+                <strong>#{{ selectedScooterDetail.id }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>骑行状态</span>
+                <strong>{{ selectedScooterDetail.rideText }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>故障状态</span>
+                <strong>{{ selectedScooterDetail.faultText }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>电量</span>
+                <strong>{{ selectedScooterDetail.battery === null ? '--' : `${selectedScooterDetail.battery}%` }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>经纬度</span>
+                <strong>
+                  {{ Number.isFinite(selectedScooterDetail.longitude) && Number.isFinite(selectedScooterDetail.latitude)
+                    ? `${selectedScooterDetail.longitude.toFixed(6)}, ${selectedScooterDetail.latitude.toFixed(6)}`
+                    : '--' }}
+                </strong>
+              </div>
+              <div class="detail-item">
+                <span>创建时间</span>
+                <strong>{{ formatDateTime(selectedScooterDetail.createTime) }}</strong>
+              </div>
             </div>
-            <div class="detail-item">
-              <span>骑行状态</span>
-              <strong>{{ selectedScooterDetail.rideText }}</strong>
-            </div>
-            <div class="detail-item">
-              <span>故障状态</span>
-              <strong>{{ selectedScooterDetail.faultText }}</strong>
-            </div>
-            <div class="detail-item">
-              <span>电量</span>
-              <strong>{{ selectedScooterDetail.battery === null ? '--' : `${selectedScooterDetail.battery}%` }}</strong>
-            </div>
-            <div class="detail-item">
-              <span>经纬度</span>
-              <strong>
-                {{ Number.isFinite(selectedScooterDetail.longitude) && Number.isFinite(selectedScooterDetail.latitude)
-                  ? `${selectedScooterDetail.longitude.toFixed(6)}, ${selectedScooterDetail.latitude.toFixed(6)}`
-                  : '--' }}
-              </strong>
-            </div>
-            <div class="detail-item">
-              <span>创建时间</span>
-              <strong>{{ formatDateTime(selectedScooterDetail.createTime) }}</strong>
-            </div>
-          </div>
-          <div v-else class="empty-state">请在地图上点击任一车辆查看详情。</div>
+            <div v-else class="empty-state">请在地图上点击任一车辆查看详情。</div>
+          </section>
         </aside>
       </div>
     </section>
@@ -206,17 +216,43 @@ onMounted(async () => {
   padding: 28px;
 }
 
-.vehicle-manage-toolbar {
-  align-items: stretch;
+.vehicle-manage-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+}
+
+.map-panel,
+.vehicle-side-panel {
+  padding: 18px;
+}
+
+.vehicle-side-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.side-card {
+  border: 1px solid #ecece8;
+  background: #fcfcfb;
+  padding: 14px;
+}
+
+.side-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 10px;
 }
 
 .mini-metric {
-  min-width: 180px;
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   border: 1px solid #e5e5e2;
+  background: #ffffff;
+  padding: 12px;
 }
 
 .mini-metric span {
@@ -226,32 +262,10 @@ onMounted(async () => {
 }
 
 .mini-metric strong {
+  display: block;
   margin-top: 8px;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 400;
-}
-
-.vehicle-manage-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 16px;
-}
-
-.map-panel,
-.vehicle-detail-panel {
-  padding: 18px;
-}
-
-.vehicle-detail-panel h3 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 400;
-}
-
-.detail-kicker {
-  margin: 8px 0 12px;
-  color: #737373;
-  font-size: 13px;
 }
 
 .detail-grid {
@@ -261,7 +275,7 @@ onMounted(async () => {
 
 .detail-item {
   border: 1px solid #ecece8;
-  background: #fcfcfb;
+  background: #ffffff;
   padding: 12px 14px;
 }
 
@@ -288,7 +302,7 @@ onMounted(async () => {
 @media (max-width: 720px) {
   .dashboard-panel,
   .map-panel,
-  .vehicle-detail-panel {
+  .vehicle-side-panel {
     padding: 20px;
   }
 }

@@ -6,6 +6,7 @@ import {
   countPolygonPoints,
   formatPolygonPoints,
   getPolygonCenter,
+  normalizePoint,
   parsePolygonPoints,
   validatePolygonPoints
 } from '@/utils/polygon'
@@ -22,7 +23,23 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  noParkingZones: {
+    type: Array,
+    default: () => []
+  },
+  scooters: {
+    type: Array,
+    default: () => []
+  },
+  parkingPoints: {
+    type: Array,
+    default: () => []
+  },
   activeZoneId: {
+    type: [String, Number],
+    default: ''
+  },
+  activeNoParkingZoneId: {
     type: [String, Number],
     default: ''
   },
@@ -51,7 +68,11 @@ let AMap = null
 let map = null
 let polygonEditor = null
 let editablePolygon = null
-let referencePolygons = []
+let zonePolygons = []
+let noParkingPolygons = []
+let scooterMarkers = []
+let parkingPointMarkers = []
+let labels = []
 let draftPolygon = null
 let draftPolyline = null
 let draftMarkers = []
@@ -80,36 +101,15 @@ const configHint = computed(() => {
     return ''
   }
 
-  return '请在 admin 环境变量中配置 VITE_AMAP_WEB_KEY。如控制台要求安全密钥，再同时配置 VITE_AMAP_SECURITY_JS_CODE。'
+  return '请在 admin 环境变量中配置 VITE_AMAP_WEB_KEY。如控制台要求安全密钥，请同时配置 VITE_AMAP_SECURITY_JS_CODE。'
 })
-
-const getPointLongitude = (point) => {
-  if (typeof point?.getLng === 'function') {
-    return Number(point.getLng())
-  }
-
-  return Number(point?.lng ?? point?.longitude ?? point?.x)
-}
-
-const getPointLatitude = (point) => {
-  if (typeof point?.getLat === 'function') {
-    return Number(point.getLat())
-  }
-
-  return Number(point?.lat ?? point?.latitude ?? point?.y)
-}
 
 const getPolygonPathPoints = (polygonInstance) => {
   if (!polygonInstance || typeof polygonInstance.getPath !== 'function') {
     return []
   }
 
-  return polygonInstance.getPath()
-    .map((point) => ({
-      longitude: getPointLongitude(point),
-      latitude: getPointLatitude(point)
-    }))
-    .filter((point) => Number.isFinite(point.longitude) && Number.isFinite(point.latitude))
+  return polygonInstance.getPath().map((point) => normalizePoint(point)).filter(Boolean)
 }
 
 const toAmapPath = (polygon) => {
@@ -124,6 +124,46 @@ const getCurrentPolygonValue = () => {
   return formatPolygonPoints(props.modelValue)
 }
 
+const clearOverlayList = (overlayListRef) => {
+  if (!map || !overlayListRef.length) {
+    return []
+  }
+
+  map.remove(overlayListRef)
+  return []
+}
+
+const getPolygonCenterFromPath = (path) => {
+  if (!path.length) {
+    return null
+  }
+
+  const total = path.reduce(
+    (result, point) => ({
+      longitude: result.longitude + Number(point[0]),
+      latitude: result.latitude + Number(point[1])
+    }),
+    { longitude: 0, latitude: 0 }
+  )
+
+  return [total.longitude / path.length, total.latitude / path.length]
+}
+
+const createLabelMarker = (position, text) => {
+  if (!AMap || !Array.isArray(position) || position.length !== 2 || !text) {
+    return null
+  }
+
+  return new AMap.Marker({
+    position,
+    zIndex: 310,
+    bubble: true,
+    offset: new AMap.Pixel(0, -4),
+    content: `<div class="map-name-label">${text}</div>`,
+    anchor: 'bottom-center'
+  })
+}
+
 const setDefaultView = () => {
   if (!map) {
     return
@@ -133,11 +173,7 @@ const setDefaultView = () => {
 }
 
 const focusEditablePolygon = () => {
-  if (!map) {
-    return
-  }
-
-  if (!editablePolygon) {
+  if (!map || !editablePolygon) {
     setDefaultView()
     return
   }
@@ -160,22 +196,226 @@ const focusDraftGeometry = () => {
   map.setFitView(overlays, false, [56, 56, 56, 56])
 }
 
+const fitViewToAll = () => {
+  if (!map) {
+    return
+  }
+
+  const overlays = [
+    ...zonePolygons,
+    ...noParkingPolygons,
+    ...scooterMarkers,
+    ...parkingPointMarkers,
+    editablePolygon,
+    draftPolygon,
+    draftPolyline,
+    ...draftMarkers
+  ].filter(Boolean)
+
+  if (!overlays.length) {
+    setDefaultView()
+    return
+  }
+
+  map.setFitView(overlays, false, [56, 56, 56, 56])
+}
+
+const getScooterStyle = (scooter) => {
+  if (Number(scooter.faultStatus) === 1) {
+    return {
+      radius: 6,
+      fillColor: '#8f3a2d'
+    }
+  }
+
+  return {
+    radius: 6,
+    fillColor: '#2f6f46'
+  }
+}
+
+const renderStaticZonePolygons = () => {
+  if (!map || !AMap) {
+    return
+  }
+
+  zonePolygons = clearOverlayList(zonePolygons)
+
+  zonePolygons = props.zones
+    .filter((item) => String(item.id) !== String(props.activeZoneId || ''))
+    .map((item) => {
+      const path = toAmapPath(item.polygon)
+      if (path.length < 3) {
+        return null
+      }
+
+      return new AMap.Polygon({
+        path,
+        strokeColor: '#0a5e9a',
+        strokeWeight: 2,
+        strokeOpacity: 0.85,
+        fillColor: '#4d9ed8',
+        fillOpacity: 0.12,
+        bubble: true
+      })
+    })
+    .filter(Boolean)
+
+  if (zonePolygons.length) {
+    map.add(zonePolygons)
+  }
+}
+
+const renderStaticNoParkingPolygons = () => {
+  if (!map || !AMap) {
+    return
+  }
+
+  noParkingPolygons = clearOverlayList(noParkingPolygons)
+
+  noParkingPolygons = props.noParkingZones
+    .filter((item) => String(item.id) !== String(props.activeNoParkingZoneId || ''))
+    .map((item) => {
+      const path = toAmapPath(item.polygon)
+      if (path.length < 3) {
+        return null
+      }
+
+      return new AMap.Polygon({
+        path,
+        strokeColor: '#8f3a2d',
+        strokeWeight: 2,
+        strokeOpacity: 0.9,
+        strokeStyle: 'dashed',
+        fillColor: '#cf7b6f',
+        fillOpacity: 0.15,
+        bubble: true
+      })
+    })
+    .filter(Boolean)
+
+  if (noParkingPolygons.length) {
+    map.add(noParkingPolygons)
+  }
+}
+
+const renderScooterMarkers = () => {
+  if (!map || !AMap) {
+    return
+  }
+
+  scooterMarkers = clearOverlayList(scooterMarkers)
+
+  scooterMarkers = props.scooters
+    .filter((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
+    .map((item) => {
+      const style = getScooterStyle(item)
+      return new AMap.CircleMarker({
+        center: [item.longitude, item.latitude],
+        radius: style.radius,
+        strokeColor: '#ffffff',
+        strokeWeight: 2,
+        strokeOpacity: 1,
+        fillColor: style.fillColor,
+        fillOpacity: 1,
+        zIndex: 250,
+        bubble: true
+      })
+    })
+
+  if (scooterMarkers.length) {
+    map.add(scooterMarkers)
+  }
+}
+
+const renderParkingPointMarkers = () => {
+  if (!map || !AMap) {
+    return
+  }
+
+  parkingPointMarkers = clearOverlayList(parkingPointMarkers)
+
+  parkingPointMarkers = props.parkingPoints
+    .filter((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
+    .map((item) => {
+      return new AMap.CircleMarker({
+        center: [item.longitude, item.latitude],
+        radius: 5,
+        strokeColor: '#2b2b2b',
+        strokeWeight: 2,
+        strokeOpacity: 1,
+        fillColor: '#f8d65c',
+        fillOpacity: 1,
+        zIndex: 245,
+        bubble: true
+      })
+    })
+
+  if (parkingPointMarkers.length) {
+    map.add(parkingPointMarkers)
+  }
+}
+
+const renderLabels = () => {
+  if (!map || !AMap) {
+    return
+  }
+
+  labels = clearOverlayList(labels)
+
+  const zoneLabels = props.zones
+    .filter((item) => String(item.id) !== String(props.activeZoneId || ''))
+    .map((item) => {
+      const path = toAmapPath(item.polygon)
+      if (path.length < 3) {
+        return null
+      }
+
+      return createLabelMarker(getPolygonCenterFromPath(path), item.label || item.name || `片区 #${item.id}`)
+    })
+    .filter(Boolean)
+
+  const noParkingLabels = props.noParkingZones
+    .filter((item) => String(item.id) !== String(props.activeNoParkingZoneId || ''))
+    .map((item) => {
+      const path = toAmapPath(item.polygon)
+      if (path.length < 3) {
+        return null
+      }
+
+      return createLabelMarker(getPolygonCenterFromPath(path), item.label || item.name || `禁停区 #${item.id}`)
+    })
+    .filter(Boolean)
+
+  const parkingPointLabels = props.parkingPoints
+    .filter((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
+    .map((item) => {
+      return createLabelMarker([item.longitude, item.latitude], item.name || `停车点 #${item.id}`)
+    })
+    .filter(Boolean)
+
+  labels = [...zoneLabels, ...noParkingLabels, ...parkingPointLabels]
+
+  if (labels.length) {
+    map.add(labels)
+  }
+}
+
 const setEditorAdsorbPolygons = () => {
   if (!polygonEditor || typeof polygonEditor.setAdsorbPolygons !== 'function') {
     return
   }
 
-  polygonEditor.setAdsorbPolygons(referencePolygons)
+  polygonEditor.setAdsorbPolygons([...zonePolygons, ...noParkingPolygons])
 }
 
 const validateAndEmit = (points, shouldEmit = true) => {
   const validation = validatePolygonPoints(points)
-  validationErrors.value = validation.errors
+  validationErrors.value = validation.valid ? [] : validation.errors
 
   if (!validation.valid) {
     statusMessage.value = validation.errors[0] || '当前边界无效。'
   } else if (!props.readonly) {
-    validationErrors.value = []
     statusMessage.value = editorEnabled.value
       ? '已进入顶点编辑，可直接拖动、加点或删点。'
       : '边界已生成，可继续编辑顶点，或重新绘制。'
@@ -243,7 +483,7 @@ const renderDraftGeometry = () => {
       strokeOpacity: 1,
       fillColor: '#ffffff',
       fillOpacity: 1,
-      zIndex: 220,
+      zIndex: 260,
       bubble: true
     })
   })
@@ -295,50 +535,6 @@ const destroyEditablePolygon = () => {
   }
 
   editablePolygon = null
-}
-
-const clearReferencePolygons = () => {
-  if (!map || !referencePolygons.length) {
-    referencePolygons = []
-    return
-  }
-
-  map.remove(referencePolygons)
-  referencePolygons = []
-}
-
-const renderReferencePolygons = () => {
-  if (!map || !AMap) {
-    return
-  }
-
-  clearReferencePolygons()
-
-  referencePolygons = props.zones
-    .filter((item) => String(item.id) !== String(props.activeZoneId || ''))
-    .map((item) => {
-      const path = toAmapPath(item.polygon)
-      if (path.length < 3) {
-        return null
-      }
-
-      return new AMap.Polygon({
-        path,
-        strokeColor: '#d4d4d1',
-        strokeWeight: 2,
-        strokeOpacity: 0.85,
-        fillColor: '#e5e5e2',
-        fillOpacity: 0.2,
-        bubble: true
-      })
-    })
-    .filter(Boolean)
-
-  if (referencePolygons.length) {
-    map.add(referencePolygons)
-  }
-
-  setEditorAdsorbPolygons()
 }
 
 const bindEditorEvents = () => {
@@ -453,7 +649,9 @@ const syncPolygonFromModel = ({ fitView = false } = {}) => {
     if (!props.readonly) {
       statusMessage.value = '先点击开始绘制，再在地图上逐点落位。'
     }
-    setDefaultView()
+    if (fitView) {
+      fitViewToAll()
+    }
     return
   }
 
@@ -462,6 +660,19 @@ const syncPolygonFromModel = ({ fitView = false } = {}) => {
     shouldEmit: false,
     autoOpenEditor: !props.readonly
   })
+}
+
+const renderBackgroundLayers = ({ fitView = false } = {}) => {
+  renderStaticZonePolygons()
+  renderStaticNoParkingPolygons()
+  renderScooterMarkers()
+  renderParkingPointMarkers()
+  renderLabels()
+  setEditorAdsorbPolygons()
+
+  if (fitView) {
+    fitViewToAll()
+  }
 }
 
 const stopDrawing = () => {
@@ -497,7 +708,7 @@ const clearPolygon = () => {
     valid: false,
     errors: ['请先绘制有效边界。']
   })
-  setDefaultView()
+  fitViewToAll()
 }
 
 const cancelDrawing = () => {
@@ -515,7 +726,7 @@ const cancelDrawing = () => {
     statusMessage.value = '已恢复原边界，可继续拖动顶点微调。'
   } else {
     statusMessage.value = '已取消绘制。'
-    setDefaultView()
+    fitViewToAll()
   }
 
   polygonBackupValue = ''
@@ -532,7 +743,7 @@ const undoLastDraftPoint = () => {
   if (draftPointCount.value) {
     focusDraftGeometry()
   } else {
-    setDefaultView()
+    fitViewToAll()
   }
 
   updateDraftStatus()
@@ -568,12 +779,8 @@ const handleDrawingClick = (event) => {
     return
   }
 
-  const point = {
-    longitude: Number(event.lnglat?.getLng?.()),
-    latitude: Number(event.lnglat?.getLat?.())
-  }
-
-  if (!Number.isFinite(point.longitude) || !Number.isFinite(point.latitude)) {
+  const point = normalizePoint(event.lnglat)
+  if (!point) {
     return
   }
 
@@ -621,14 +828,20 @@ const setupMap = async () => {
       viewMode: '3D'
     })
 
-    map.addControl(new AMap.ToolBar({
-      position: 'RB'
-    }))
+    map.addControl(
+      new AMap.ToolBar({
+        position: 'RB'
+      })
+    )
     map.addControl(new AMap.Scale())
     map.on('click', handleDrawingClick)
 
-    renderReferencePolygons()
+    renderBackgroundLayers({ fitView: false })
     syncPolygonFromModel({ fitView: true })
+
+    if (!hasPolygon.value) {
+      fitViewToAll()
+    }
 
     if (typeof ResizeObserver !== 'undefined') {
       mapResizeObserver = new ResizeObserver(() => {
@@ -660,7 +873,11 @@ const destroyMap = () => {
   draftPoints.value = []
   clearDraftGeometry()
   destroyEditablePolygon()
-  clearReferencePolygons()
+  zonePolygons = clearOverlayList(zonePolygons)
+  noParkingPolygons = clearOverlayList(noParkingPolygons)
+  scooterMarkers = clearOverlayList(scooterMarkers)
+  parkingPointMarkers = clearOverlayList(parkingPointMarkers)
+  labels = clearOverlayList(labels)
 
   if (map && typeof map.destroy === 'function') {
     map.off('click', handleDrawingClick)
@@ -688,25 +905,25 @@ watch(
 )
 
 watch(
-  () => props.zones,
+  () => [props.zones, props.noParkingZones, props.scooters, props.parkingPoints],
   () => {
     if (!map || !AMap) {
       return
     }
 
-    renderReferencePolygons()
+    renderBackgroundLayers({ fitView: props.readonly && !hasPolygon.value })
   },
   { deep: true }
 )
 
 watch(
-  () => props.activeZoneId,
+  () => [props.activeZoneId, props.activeNoParkingZoneId],
   () => {
     if (!map || !AMap) {
       return
     }
 
-    renderReferencePolygons()
+    renderBackgroundLayers({ fitView: false })
   }
 )
 
@@ -783,13 +1000,7 @@ onBeforeUnmount(destroyMap)
         完成绘制
       </button>
 
-      <button
-        v-if="drawing"
-        type="button"
-        class="button-secondary"
-        :disabled="loading"
-        @click="cancelDrawing"
-      >
+      <button v-if="drawing" type="button" class="button-secondary" :disabled="loading" @click="cancelDrawing">
         取消绘制
       </button>
 
@@ -797,9 +1008,9 @@ onBeforeUnmount(destroyMap)
         type="button"
         class="button-secondary"
         :disabled="loading || Boolean(loadError) || !isAmapConfigured()"
-        @click="drawing ? focusDraftGeometry() : hasPolygon ? focusEditablePolygon() : setDefaultView()"
+        @click="drawing ? focusDraftGeometry() : hasPolygon ? focusEditablePolygon() : fitViewToAll()"
       >
-        {{ drawing ? '回到绘制区域' : hasPolygon ? '回到当前边界' : '回到默认区域' }}
+        {{ drawing ? '回到绘制区域' : hasPolygon ? '回到当前边界' : '查看全部要素' }}
       </button>
 
       <button type="button" class="button-secondary" :disabled="loading" @click="clearPolygon">
@@ -922,6 +1133,21 @@ onBeforeUnmount(destroyMap)
 
 .map-errors p + p {
   margin-top: 8px;
+}
+
+:global(.map-name-label) {
+  display: inline-block;
+  max-width: 220px;
+  padding: 2px 8px;
+  border: 1px solid #d8d8d3;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1b1b1b;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  border-radius: 2px;
 }
 
 @media (max-width: 720px) {

@@ -5,6 +5,7 @@ import ZoneMapEditor from '@/components/ZoneMapEditor.vue'
 import { addNoParkingZone, editNoParkingZone, getNoParkingZoneList } from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { getEditorCache, removeEditorCache } from '@/utils/editorCache'
+import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 import { formatPolygonPoints, getPolygonCenter, validatePolygonPoints } from '@/utils/polygon'
 
 const route = useRoute()
@@ -17,6 +18,9 @@ const editing = computed(() => route.name === 'no-parking-zone-edit')
 const saving = ref(false)
 const loading = ref(false)
 const zones = ref([])
+const areaZones = ref([])
+const scooters = ref([])
+const parkingPoints = ref([])
 const form = ref({
   id: '',
   name: '',
@@ -63,6 +67,21 @@ const fetchZones = async () => {
     zones.value = response.data?.areaList || []
   } catch (error) {
     zones.value = []
+  }
+}
+
+const fetchMapLayers = async () => {
+  try {
+    const layers = await fetchAdminMapLayers({
+      force: true
+    })
+    areaZones.value = layers.zones || []
+    scooters.value = layers.scooters || []
+    parkingPoints.value = layers.parkingPoints || []
+  } catch (error) {
+    areaZones.value = []
+    scooters.value = []
+    parkingPoints.value = []
   }
 }
 
@@ -142,7 +161,7 @@ const submit = async () => {
 
 onMounted(async () => {
   loading.value = true
-  await fetchZones()
+  await Promise.all([fetchZones(), fetchMapLayers()])
 
   if (!hydrateEditData()) {
     uiStore.pushToast({
@@ -162,7 +181,7 @@ onMounted(async () => {
       <div class="editor-header">
         <div>
           <h2 class="panel-title">{{ pageTitle }}</h2>
-          <p class="panel-description">地图编辑已拆为独立页面，边界绘制和保存操作保持同屏可见。</p>
+          <p class="panel-description">绘制禁停区时，地图会同步展示全部片区、禁停区、车辆和停车点。</p>
         </div>
         <div class="button-row">
           <button type="button" class="button-secondary" @click="goBack">返回列表</button>
@@ -204,8 +223,11 @@ onMounted(async () => {
         <section class="page-surface map-panel">
           <ZoneMapEditor
             v-model="form.polygon"
-            :zones="otherZones"
-            :active-zone-id="form.id"
+            :zones="areaZones"
+            :no-parking-zones="otherZones"
+            :scooters="scooters"
+            :parking-points="parkingPoints"
+            :active-no-parking-zone-id="form.id"
             :readonly="false"
             :height="560"
           />

@@ -5,6 +5,7 @@ import PointMapPicker from '@/components/PointMapPicker.vue'
 import { addParkingPoint, editParkingPoint, getParkingPointList } from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { getEditorCache, removeEditorCache } from '@/utils/editorCache'
+import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,6 +17,10 @@ const editing = computed(() => route.name === 'parking-point-edit')
 const saving = ref(false)
 const loading = ref(false)
 const points = ref([])
+const zones = ref([])
+const noParkingZones = ref([])
+const scooters = ref([])
+const allParkingPoints = ref([])
 const form = ref({
   id: '',
   name: '',
@@ -51,6 +56,14 @@ const coordinateText = computed(() => {
   return `${longitude.toFixed(6)}, ${latitude.toFixed(6)}`
 })
 
+const parkingPointsForMap = computed(() => {
+  if (!editing.value) {
+    return allParkingPoints.value
+  }
+
+  return allParkingPoints.value.filter((item) => String(item.id) !== String(form.value.id || ''))
+})
+
 const applyRecord = (item) => {
   form.value = {
     id: item.id,
@@ -71,6 +84,23 @@ const fetchPoints = async () => {
     points.value = response.data?.areaList || []
   } catch (error) {
     points.value = []
+  }
+}
+
+const fetchMapLayers = async () => {
+  try {
+    const layers = await fetchAdminMapLayers({
+      force: true
+    })
+    zones.value = layers.zones || []
+    noParkingZones.value = layers.noParkingZones || []
+    scooters.value = layers.scooters || []
+    allParkingPoints.value = layers.parkingPoints || []
+  } catch (error) {
+    zones.value = []
+    noParkingZones.value = []
+    scooters.value = []
+    allParkingPoints.value = []
   }
 }
 
@@ -153,7 +183,7 @@ const submit = async () => {
 
 onMounted(async () => {
   loading.value = true
-  await fetchPoints()
+  await Promise.all([fetchPoints(), fetchMapLayers()])
 
   if (!hydrateEditData()) {
     uiStore.pushToast({
@@ -173,7 +203,7 @@ onMounted(async () => {
       <div class="editor-header">
         <div>
           <h2 class="panel-title">{{ pageTitle }}</h2>
-          <p class="panel-description">地图选点已拆为独立页面，名称、状态和点位调整可以同时查看。</p>
+          <p class="panel-description">停车点选点地图已叠加片区、禁停区、车辆和停车点，方便参考布局。</p>
         </div>
         <div class="button-row">
           <button type="button" class="button-secondary" @click="goBack">返回列表</button>
@@ -209,7 +239,16 @@ onMounted(async () => {
         </aside>
 
         <section class="page-surface map-panel">
-          <PointMapPicker v-model="pointModel" :readonly="false" :height="560" />
+          <PointMapPicker
+            v-model="pointModel"
+            :zones="zones"
+            :no-parking-zones="noParkingZones"
+            :scooters="scooters"
+            :parking-points="parkingPointsForMap"
+            :active-parking-point-id="form.id"
+            :readonly="false"
+            :height="560"
+          />
         </section>
       </div>
     </section>

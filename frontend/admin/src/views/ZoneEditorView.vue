@@ -2,9 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ZoneMapEditor from '@/components/ZoneMapEditor.vue'
-import { addZone, editZone, getDispatcherList, getZoneDetail, getZoneList } from '@/api'
+import { addZone, editZone, getDispatcherList, getZoneDetail } from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { getEditorCache, removeEditorCache } from '@/utils/editorCache'
+import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
 import { formatPolygonPoints, getPolygonCenter, validatePolygonPoints } from '@/utils/polygon'
 
 const route = useRoute()
@@ -18,6 +19,9 @@ const saving = ref(false)
 const loading = ref(false)
 const dispatchers = ref([])
 const zones = ref([])
+const noParkingZones = ref([])
+const scooters = ref([])
+const parkingPoints = ref([])
 const form = ref({
   id: '',
   name: '',
@@ -65,15 +69,20 @@ const fetchDispatchers = async () => {
   }
 }
 
-const fetchZones = async () => {
+const fetchMapLayers = async () => {
   try {
-    const response = await getZoneList({
-      page: 1,
-      pageSize: 500
+    const layers = await fetchAdminMapLayers({
+      force: true
     })
-    zones.value = response.data?.areaList || []
+    zones.value = layers.zones || []
+    noParkingZones.value = layers.noParkingZones || []
+    scooters.value = layers.scooters || []
+    parkingPoints.value = layers.parkingPoints || []
   } catch (error) {
     zones.value = []
+    noParkingZones.value = []
+    scooters.value = []
+    parkingPoints.value = []
   }
 }
 
@@ -174,7 +183,8 @@ const submit = async () => {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchDispatchers(), fetchZones()])
+  loading.value = true
+  await Promise.all([fetchMapLayers(), fetchDispatchers()])
 
   if (editing.value) {
     const hasCachedData = hydrateEditData()
@@ -187,6 +197,7 @@ onMounted(async () => {
         tone: 'warning'
       })
       router.replace({ name: 'zones' })
+      loading.value = false
       return
     }
 
@@ -198,6 +209,8 @@ onMounted(async () => {
       router.replace({ name: 'zones' })
     }
   }
+
+  loading.value = false
 })
 </script>
 
@@ -207,7 +220,7 @@ onMounted(async () => {
       <div class="editor-header">
         <div>
           <h2 class="panel-title">{{ pageTitle }}</h2>
-          <p class="panel-description">地图编辑已拆为独立页面，操作按钮固定在页面顶部，不再受弹窗滚动影响。</p>
+          <p class="panel-description">地图编辑页支持叠加显示片区、禁停区、车辆和停车点，便于精确绘制边界。</p>
         </div>
         <div class="button-row">
           <button type="button" class="button-secondary" @click="goBack">返回列表</button>
@@ -252,6 +265,9 @@ onMounted(async () => {
           <ZoneMapEditor
             v-model="form.polygon"
             :zones="otherZones"
+            :no-parking-zones="noParkingZones"
+            :scooters="scooters"
+            :parking-points="parkingPoints"
             :active-zone-id="form.id"
             :readonly="false"
             :height="560"
