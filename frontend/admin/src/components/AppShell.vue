@@ -13,13 +13,13 @@ const uiStore = useUiStore()
 
 const navItems = [
   { label: '数据概览', to: { name: 'dashboard' } },
-  { label: '车辆管理', to: { name: 'vehicles' } },
-  { label: '定价管理', to: { name: 'pricing' } },
-  { label: '套餐管理', to: { name: 'packages' } },
+  { label: '地图详情', to: { name: 'vehicles' } },
   { label: '片区管理', to: { name: 'zones' } },
   { label: '禁停区管理', to: { name: 'no-parking-zones' } },
   { label: '停车点管理', to: { name: 'parking-points' } },
-  { label: '调度员管理', to: { name: 'dispatchers' } }
+  { label: '调度员管理', to: { name: 'dispatchers' } },
+  { label: '定价管理', to: { name: 'pricing' } },
+  { label: '套餐管理', to: { name: 'packages' } }
 ]
 
 const sidebarOpen = ref(false)

@@ -395,7 +395,7 @@ onMounted(async () => {
     <section class="page-surface dashboard-panel">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">车辆管理</h2>
+          <h2 class="panel-title">地图详情</h2>
         </div>
       </div>
 
