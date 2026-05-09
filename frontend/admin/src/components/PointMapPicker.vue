@@ -55,7 +55,6 @@ let zonePolygons = []
 let noParkingPolygons = []
 let scooterMarkers = []
 let parkingPointMarkers = []
-let labels = []
 let mapResizeObserver = null
 let skipModelWatcher = false
 
@@ -103,36 +102,6 @@ const clearOverlayList = (overlayListRef) => {
   return []
 }
 
-const getPolygonCenterFromPath = (path) => {
-  if (!path.length) {
-    return null
-  }
-
-  const total = path.reduce(
-    (result, point) => ({
-      longitude: result.longitude + Number(point[0]),
-      latitude: result.latitude + Number(point[1])
-    }),
-    { longitude: 0, latitude: 0 }
-  )
-
-  return [total.longitude / path.length, total.latitude / path.length]
-}
-
-const createLabelMarker = (position, text) => {
-  if (!AMap || !Array.isArray(position) || position.length !== 2 || !text) {
-    return null
-  }
-
-  return new AMap.Marker({
-    position,
-    zIndex: 310,
-    bubble: true,
-    offset: new AMap.Pixel(0, -4),
-    content: `<div class="map-name-label">${text}</div>`,
-    anchor: 'bottom-center'
-  })
-}
 
 const emitPoint = (point) => {
   skipModelWatcher = true
@@ -348,55 +317,12 @@ const renderParkingPointMarkers = () => {
   }
 }
 
-const renderLabels = () => {
-  if (!map || !AMap) {
-    return
-  }
-
-  labels = clearOverlayList(labels)
-
-  const zoneLabels = props.zones
-    .map((item) => {
-      const path = parsePolygonPoints(item.polygon).map((point) => [point.longitude, point.latitude])
-      if (path.length < 3) {
-        return null
-      }
-
-      return createLabelMarker(getPolygonCenterFromPath(path), item.label || item.name || `片区 #${item.id}`)
-    })
-    .filter(Boolean)
-
-  const noParkingLabels = props.noParkingZones
-    .map((item) => {
-      const path = parsePolygonPoints(item.polygon).map((point) => [point.longitude, point.latitude])
-      if (path.length < 3) {
-        return null
-      }
-
-      return createLabelMarker(getPolygonCenterFromPath(path), item.label || item.name || `禁停区 #${item.id}`)
-    })
-    .filter(Boolean)
-
-  const parkingPointLabels = props.parkingPoints
-    .filter((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
-    .map((item) => {
-      return createLabelMarker([item.longitude, item.latitude], item.name || `停车点 #${item.id}`)
-    })
-    .filter(Boolean)
-
-  labels = [...zoneLabels, ...noParkingLabels, ...parkingPointLabels]
-
-  if (labels.length) {
-    map.add(labels)
-  }
-}
 
 const renderBackgroundLayers = ({ fitView = false } = {}) => {
   renderStaticZonePolygons()
   renderStaticNoParkingPolygons()
   renderScooterMarkers()
   renderParkingPointMarkers()
-  renderLabels()
 
   if (fitView) {
     fitViewToAll()
@@ -519,7 +445,6 @@ const destroyMap = () => {
   noParkingPolygons = clearOverlayList(noParkingPolygons)
   scooterMarkers = clearOverlayList(scooterMarkers)
   parkingPointMarkers = clearOverlayList(parkingPointMarkers)
-  labels = clearOverlayList(labels)
 
   if (map && typeof map.destroy === 'function') {
     map.destroy()
@@ -731,20 +656,6 @@ onBeforeUnmount(destroyMap)
   font-size: 13px;
 }
 
-:global(.map-name-label) {
-  display: inline-block;
-  max-width: 220px;
-  padding: 2px 8px;
-  border: 1px solid #d8d8d3;
-  background: rgba(255, 255, 255, 0.95);
-  color: #1b1b1b;
-  font-size: 12px;
-  line-height: 1.4;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  border-radius: 2px;
-}
 
 @media (max-width: 720px) {
   .preview-grid {

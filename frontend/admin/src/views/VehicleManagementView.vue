@@ -1,120 +1,408 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import ScooterMapPreview from '@/components/ScooterMapPreview.vue'
-import { getScooterList } from '@/api'
 import { fetchAdminMapLayers } from '@/utils/adminMapLayers'
-import { formatDateTime, formatNumber } from '@/utils/format'
+import { formatBinaryStatus, formatDateTime, formatNumber } from '@/utils/format'
 
-const areas = ref([])
-const noParkingZones = ref([])
-const parkingPoints = ref([])
-const loadingAreas = ref(false)
-const loadingScooters = ref(false)
-const scooterAreaId = ref('')
-const scooters = ref([])
-const selectedScooter = ref(null)
+const TYPE_ZONE = 'zone'
+const TYPE_NO_PARKING = 'noParkingZone'
+const TYPE_PARKING_POINT = 'parkingPoint'
+const TYPE_SCOOTER = 'scooter'
 
-const normalizedAreaId = (value) => {
-  return value === '' ? undefined : Number(value)
+const router = useRouter()
+
+const loadingLayers = ref(false)
+const layers = ref({
+  zones: [],
+  noParkingZones: [],
+  scooters: [],
+  parkingPoints: []
+})
+
+const selectedType = ref(TYPE_ZONE)
+const selectedIdByType = ref({
+  [TYPE_ZONE]: '',
+  [TYPE_NO_PARKING]: '',
+  [TYPE_PARKING_POINT]: '',
+  [TYPE_SCOOTER]: ''
+})
+const selectedDetail = ref(null)
+
+const typeOptions = [
+  { value: TYPE_ZONE, label: '片区' },
+  { value: TYPE_NO_PARKING, label: '禁停区' },
+  { value: TYPE_PARKING_POINT, label: '停车点' },
+  { value: TYPE_SCOOTER, label: '车辆' }
+]
+
+const typeNameMap = {
+  [TYPE_ZONE]: '片区',
+  [TYPE_NO_PARKING]: '禁停区',
+  [TYPE_PARKING_POINT]: '停车点',
+  [TYPE_SCOOTER]: '车辆'
 }
 
-const normalizeScooterRecord = (item) => {
-  const longitude = Number(item.longitude)
-  const latitude = Number(item.latitude)
-  const faultStatus = Number(item.faultStatus ?? item.fault_status ?? 0)
-  const rideStatus = Number(item.rideStatus ?? item.ride_status ?? 0)
-  const battery = Number(item.battery)
+const allOptionLabelMap = {
+  [TYPE_ZONE]: '全部片区',
+  [TYPE_NO_PARKING]: '全部禁停区',
+  [TYPE_PARKING_POINT]: '全部停车点',
+  [TYPE_SCOOTER]: '全部车辆'
+}
+
+const itemListByType = computed(() => {
+  return {
+    [TYPE_ZONE]: layers.value.zones,
+    [TYPE_NO_PARKING]: layers.value.noParkingZones,
+    [TYPE_PARKING_POINT]: layers.value.parkingPoints,
+    [TYPE_SCOOTER]: layers.value.scooters
+  }
+})
+
+const currentList = computed(() => itemListByType.value[selectedType.value] || [])
+const currentSelectedId = computed(() => selectedIdByType.value[selectedType.value] || '')
+
+const currentSelectedItem = computed(() => {
+  if (!currentSelectedId.value) {
+    return null
+  }
+
+  return currentList.value.find((item) => String(item.id) === String(currentSelectedId.value)) || null
+})
+
+const zoneSummary = computed(() => {
+  const list = layers.value.zones
+  const assigned = list.filter((item) => item.dispatcherName).length
 
   return {
-    id: item.id,
-    code: item.code || '--',
-    areaId: Number(item.areaId ?? item.area_id),
-    rideStatus,
-    faultStatus,
-    battery: Number.isFinite(battery) ? battery : null,
-    longitude: Number.isFinite(longitude) ? longitude : null,
-    latitude: Number.isFinite(latitude) ? latitude : null,
-    createTime: item.createTime || item.create_time || ''
+    total: list.length,
+    assigned,
+    unassigned: list.length - assigned
   }
-}
+})
+
+const noParkingSummary = computed(() => {
+  const list = layers.value.noParkingZones
+  const enabled = list.filter((item) => Number(item.status) === 1).length
+
+  return {
+    total: list.length,
+    enabled,
+    disabled: list.length - enabled
+  }
+})
+
+const parkingPointSummary = computed(() => {
+  const list = layers.value.parkingPoints
+  const enabled = list.filter((item) => Number(item.status) === 1).length
+
+  return {
+    total: list.length,
+    enabled,
+    disabled: list.length - enabled
+  }
+})
 
 const scooterSummary = computed(() => {
-  const list = scooters.value
+  const list = layers.value.scooters
   const online = list.filter(
     (item) => item.faultStatus !== 1 && Number.isFinite(item.longitude) && Number.isFinite(item.latitude)
   ).length
   const fault = list.filter((item) => item.faultStatus === 1).length
 
-  return { online, fault }
-})
-
-const selectedScooterDetail = computed(() => {
-  if (!selectedScooter.value) {
-    return null
-  }
-
   return {
-    ...selectedScooter.value,
-    faultText: selectedScooter.value.faultStatus === 1 ? '故障' : '正常',
-    rideText: selectedScooter.value.rideStatus === 1 ? '使用中' : '空闲'
+    total: list.length,
+    online,
+    fault
   }
 })
 
-const fetchAreasAndLayers = async () => {
-  loadingAreas.value = true
+const summaryByType = computed(() => {
+  return {
+    [TYPE_ZONE]: zoneSummary.value,
+    [TYPE_NO_PARKING]: noParkingSummary.value,
+    [TYPE_PARKING_POINT]: parkingPointSummary.value,
+    [TYPE_SCOOTER]: scooterSummary.value
+  }
+})
 
-  try {
-    const layers = await fetchAdminMapLayers({
-      force: true
+const selectedIds = computed(() => {
+  return {
+    zoneId: selectedIdByType.value[TYPE_ZONE],
+    noParkingZoneId: selectedIdByType.value[TYPE_NO_PARKING],
+    parkingPointId: selectedIdByType.value[TYPE_PARKING_POINT],
+    scooterId: selectedIdByType.value[TYPE_SCOOTER]
+  }
+})
+
+const detailMode = computed(() => {
+  if (selectedDetail.value) {
+    return selectedDetail.value.type
+  }
+
+  if (currentSelectedItem.value) {
+    return selectedType.value
+  }
+
+  return 'summary'
+})
+
+const detailData = computed(() => {
+  if (selectedDetail.value) {
+    return selectedDetail.value.item
+  }
+
+  return currentSelectedItem.value
+})
+
+const detailTitle = computed(() => {
+  if (detailMode.value === 'summary') {
+    return `${typeNameMap[selectedType.value]}汇总`
+  }
+
+  if (detailMode.value === TYPE_ZONE) {
+    return '片区详情'
+  }
+
+  if (detailMode.value === TYPE_NO_PARKING) {
+    return '禁停区详情'
+  }
+
+  if (detailMode.value === TYPE_PARKING_POINT) {
+    return '停车点详情'
+  }
+
+  return '车辆详情'
+})
+
+const canEditCurrentDetail = computed(() => {
+  if (!detailData.value) {
+    return false
+  }
+
+  return [TYPE_ZONE, TYPE_NO_PARKING, TYPE_PARKING_POINT].includes(detailMode.value)
+})
+
+const editButtonText = computed(() => {
+  if (detailMode.value === TYPE_ZONE) {
+    return '编辑片区'
+  }
+
+  if (detailMode.value === TYPE_NO_PARKING) {
+    return '编辑禁停区'
+  }
+
+  if (detailMode.value === TYPE_PARKING_POINT) {
+    return '编辑停车点'
+  }
+
+  return '编辑'
+})
+
+const hasCoordinate = (item) => Number.isFinite(item?.longitude) && Number.isFinite(item?.latitude)
+
+const formatCoordinate = (item) => {
+  if (!hasCoordinate(item)) {
+    return '--'
+  }
+
+  return `${item.longitude.toFixed(6)}, ${item.latitude.toFixed(6)}`
+}
+
+const getFaultText = (item) => {
+  return Number(item?.faultStatus) === 1 ? '故障' : '正常'
+}
+
+const getRideText = (item) => {
+  return Number(item?.rideStatus) === 1 ? '使用中' : '空闲'
+}
+
+const currentSelectOptions = computed(() => {
+  const list = currentList.value || []
+  const allLabel = allOptionLabelMap[selectedType.value]
+
+  return [
+    { value: '', label: allLabel },
+    ...list.map((item) => {
+      if (selectedType.value === TYPE_ZONE) {
+        return {
+          value: String(item.id),
+          label: item.name || `片区 #${item.id}`
+        }
+      }
+
+      if (selectedType.value === TYPE_NO_PARKING) {
+        return {
+          value: String(item.id),
+          label: item.name || `禁停区 #${item.id}`
+        }
+      }
+
+      if (selectedType.value === TYPE_PARKING_POINT) {
+        return {
+          value: String(item.id),
+          label: item.name || `停车点 #${item.id}`
+        }
+      }
+
+      return {
+        value: String(item.id),
+        label: item.code || `车辆 #${item.id}`
+      }
     })
-    areas.value = layers.zones || []
-    noParkingZones.value = layers.noParkingZones || []
-    parkingPoints.value = layers.parkingPoints || []
-  } catch (error) {
-    areas.value = []
-    noParkingZones.value = []
-    parkingPoints.value = []
-  } finally {
-    loadingAreas.value = false
+  ]
+})
+
+const ensureSelectedIdsValid = () => {
+  const next = { ...selectedIdByType.value }
+
+  Object.entries(itemListByType.value).forEach(([type, list]) => {
+    const selectedId = next[type]
+    if (!selectedId) {
+      return
+    }
+
+    const exists = list.some((item) => String(item.id) === String(selectedId))
+    if (!exists) {
+      next[type] = ''
+    }
+  })
+
+  selectedIdByType.value = next
+}
+
+const resetDetailWhenAllSelected = () => {
+  if (!currentSelectedId.value) {
+    selectedDetail.value = null
   }
 }
 
-const fetchScooters = async () => {
-  loadingScooters.value = true
+const syncCurrentTypeSelectionToDetail = () => {
+  if (!currentSelectedItem.value) {
+    resetDetailWhenAllSelected()
+    return
+  }
+
+  selectedDetail.value = {
+    type: selectedType.value,
+    item: currentSelectedItem.value
+  }
+}
+
+const handleMapSelect = (payload) => {
+  if (!payload || !payload.type || !payload.item) {
+    return
+  }
+
+  const type = payload.type
+  const id = String(payload.item.id)
+
+  selectedType.value = type
+  selectedIdByType.value = {
+    ...selectedIdByType.value,
+    [type]: id
+  }
+
+  selectedDetail.value = {
+    type,
+    item: payload.item
+  }
+}
+
+const handleTypeChange = () => {
+  selectedIdByType.value = {
+    ...selectedIdByType.value,
+    [selectedType.value]: ''
+  }
+  selectedDetail.value = null
+}
+
+const handleObjectChange = () => {
+  if (!currentSelectedId.value) {
+    resetDetailWhenAllSelected()
+    return
+  }
+
+  syncCurrentTypeSelectionToDetail()
+}
+
+const gotoEdit = () => {
+  if (!canEditCurrentDetail.value || !detailData.value) {
+    return
+  }
+
+  const id = detailData.value.id
+  if (detailMode.value === TYPE_ZONE) {
+    router.push({ name: 'zone-edit', params: { id } })
+    return
+  }
+
+  if (detailMode.value === TYPE_NO_PARKING) {
+    router.push({ name: 'no-parking-zone-edit', params: { id } })
+    return
+  }
+
+  router.push({ name: 'parking-point-edit', params: { id } })
+}
+
+const fetchLayers = async () => {
+  loadingLayers.value = true
 
   try {
-    const selectedArea = normalizedAreaId(scooterAreaId.value)
-    const response = await getScooterList({
-      areaId: selectedArea
-    })
-
-    let list = response.data?.areaList
-
-    if (!Array.isArray(list) && Number.isFinite(selectedArea)) {
-      const fallbackResponse = await getScooterList({ areaId: selectedArea })
-      list = fallbackResponse.data?.areaList
+    const value = await fetchAdminMapLayers({ force: true })
+    layers.value = {
+      zones: value.zones || [],
+      noParkingZones: value.noParkingZones || [],
+      parkingPoints: value.parkingPoints || [],
+      scooters: value.scooters || []
     }
-
-    scooters.value = Array.isArray(list) ? list.map(normalizeScooterRecord) : []
-    selectedScooter.value = null
   } catch (error) {
-    scooters.value = []
-    selectedScooter.value = null
+    layers.value = {
+      zones: [],
+      noParkingZones: [],
+      parkingPoints: [],
+      scooters: []
+    }
   } finally {
-    loadingScooters.value = false
+    loadingLayers.value = false
   }
 }
 
 watch(
-  () => scooterAreaId.value,
+  () => layers.value,
   () => {
-    fetchScooters()
+    ensureSelectedIdsValid()
+
+    if (selectedDetail.value) {
+      const list = itemListByType.value[selectedDetail.value.type] || []
+      const updated = list.find((item) => String(item.id) === String(selectedDetail.value.item.id))
+      if (updated) {
+        selectedDetail.value = {
+          type: selectedDetail.value.type,
+          item: updated
+        }
+      }
+    }
+  },
+  { deep: true }
+)
+
+watch(
+  () => selectedType.value,
+  () => {
+    handleTypeChange()
+  }
+)
+
+watch(
+  () => currentSelectedId.value,
+  () => {
+    handleObjectChange()
   }
 )
 
 onMounted(async () => {
-  await fetchAreasAndLayers()
-  await fetchScooters()
+  await fetchLayers()
 })
 </script>
 
@@ -130,80 +418,185 @@ onMounted(async () => {
       <div class="vehicle-manage-grid">
         <section class="page-surface map-panel">
           <ScooterMapPreview
-            :scooters="scooters"
-            :zones="areas"
-            :no-parking-zones="noParkingZones"
-            :parking-points="parkingPoints"
-            :focus-zone-id="scooterAreaId || ''"
-            :selected-scooter-id="selectedScooter?.id"
+            :scooters="layers.scooters"
+            :zones="layers.zones"
+            :no-parking-zones="layers.noParkingZones"
+            :parking-points="layers.parkingPoints"
+            :focus-zone-id="selectedType === TYPE_ZONE ? (selectedIds.zoneId || '') : ''"
+            :selected-zone-id="selectedIds.zoneId"
+            :selected-no-parking-zone-id="selectedIds.noParkingZoneId"
+            :selected-parking-point-id="selectedIds.parkingPointId"
+            :selected-scooter-id="selectedIds.scooterId"
             :height="620"
-            @select="selectedScooter = $event"
+            @select="handleMapSelect"
           />
         </section>
 
         <aside class="page-surface vehicle-side-panel">
           <section class="side-card">
-            <h3 class="side-title">选择片区</h3>
+            <h3 class="side-title">选择对象</h3>
             <label class="form-field">
-              <span class="field-label">片区</span>
-              <select v-model="scooterAreaId" class="field-select" :disabled="loadingAreas || loadingScooters">
-                <option value="">全部片区</option>
-                <option v-for="item in areas" :key="item.id" :value="String(item.id)">{{ item.name }}</option>
+              <span class="field-label">类型</span>
+              <select v-model="selectedType" class="field-select" :disabled="loadingLayers">
+                <option v-for="item in typeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+
+            <label class="form-field">
+              <span class="field-label">对象</span>
+              <select
+                :value="currentSelectedId"
+                class="field-select"
+                :disabled="loadingLayers"
+                @change="
+                  selectedIdByType = {
+                    ...selectedIdByType,
+                    [selectedType]: $event.target.value
+                  }
+                "
+              >
+                <option v-for="option in currentSelectOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
               </select>
             </label>
           </section>
 
           <section class="side-card">
-            <h3 class="side-title">车辆统计</h3>
-            <div class="summary-grid">
+            <h3 class="side-title">{{ detailTitle }}</h3>
+
+            <div v-if="detailMode === 'summary'" class="summary-grid">
               <article class="mini-metric">
-                <span>在线车辆数</span>
-                <strong>{{ formatNumber(scooterSummary.online) }}</strong>
+                <span>总数</span>
+                <strong>{{ formatNumber(summaryByType[selectedType].total) }}</strong>
               </article>
-              <article class="mini-metric">
-                <span>故障车辆数</span>
-                <strong>{{ formatNumber(scooterSummary.fault) }}</strong>
+              <article v-if="selectedType === TYPE_ZONE" class="mini-metric">
+                <span>已分配调度员</span>
+                <strong>{{ formatNumber(summaryByType[selectedType].assigned) }}</strong>
+              </article>
+              <article v-if="selectedType === TYPE_ZONE" class="mini-metric">
+                <span>未分配调度员</span>
+                <strong>{{ formatNumber(summaryByType[selectedType].unassigned) }}</strong>
+              </article>
+              <article v-if="selectedType === TYPE_NO_PARKING || selectedType === TYPE_PARKING_POINT" class="mini-metric">
+                <span>启用</span>
+                <strong>{{ formatNumber(summaryByType[selectedType].enabled) }}</strong>
+              </article>
+              <article v-if="selectedType === TYPE_NO_PARKING || selectedType === TYPE_PARKING_POINT" class="mini-metric">
+                <span>停用</span>
+                <strong>{{ formatNumber(summaryByType[selectedType].disabled) }}</strong>
+              </article>
+              <article v-if="selectedType === TYPE_SCOOTER" class="mini-metric">
+                <span>在线车辆</span>
+                <strong>{{ formatNumber(summaryByType[selectedType].online) }}</strong>
+              </article>
+              <article v-if="selectedType === TYPE_SCOOTER" class="mini-metric">
+                <span>故障车辆</span>
+                <strong>{{ formatNumber(summaryByType[selectedType].fault) }}</strong>
               </article>
             </div>
-          </section>
 
-          <section class="side-card">
-            <h3 class="side-title">车辆详情</h3>
-            <div v-if="selectedScooterDetail" class="detail-grid">
+            <div v-else-if="detailMode === TYPE_ZONE && detailData" class="detail-grid">
               <div class="detail-item">
-                <span>车辆编码</span>
-                <strong>{{ selectedScooterDetail.code }}</strong>
+                <span>片区名称</span>
+                <strong>{{ detailData.name || '--' }}</strong>
               </div>
               <div class="detail-item">
-                <span>车辆 ID</span>
-                <strong>#{{ selectedScooterDetail.id }}</strong>
+                <span>片区 ID</span>
+                <strong>#{{ detailData.id }}</strong>
               </div>
               <div class="detail-item">
-                <span>骑行状态</span>
-                <strong>{{ selectedScooterDetail.rideText }}</strong>
+                <span>调度员</span>
+                <strong>{{ detailData.dispatcherName || '未分配' }}</strong>
               </div>
               <div class="detail-item">
-                <span>故障状态</span>
-                <strong>{{ selectedScooterDetail.faultText }}</strong>
-              </div>
-              <div class="detail-item">
-                <span>电量</span>
-                <strong>{{ selectedScooterDetail.battery === null ? '--' : `${selectedScooterDetail.battery}%` }}</strong>
-              </div>
-              <div class="detail-item">
-                <span>经纬度</span>
-                <strong>
-                  {{ Number.isFinite(selectedScooterDetail.longitude) && Number.isFinite(selectedScooterDetail.latitude)
-                    ? `${selectedScooterDetail.longitude.toFixed(6)}, ${selectedScooterDetail.latitude.toFixed(6)}`
-                    : '--' }}
-                </strong>
+                <span>调度员邮箱</span>
+                <strong>{{ detailData.dispatcherEmail || '--' }}</strong>
               </div>
               <div class="detail-item">
                 <span>创建时间</span>
-                <strong>{{ formatDateTime(selectedScooterDetail.createTime) }}</strong>
+                <strong>{{ formatDateTime(detailData.createTime) }}</strong>
               </div>
             </div>
-            <div v-else class="empty-state">请在地图上点击任一车辆查看详情。</div>
+
+            <div v-else-if="detailMode === TYPE_NO_PARKING && detailData" class="detail-grid">
+              <div class="detail-item">
+                <span>禁停区名称</span>
+                <strong>{{ detailData.name || '--' }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>禁停区 ID</span>
+                <strong>#{{ detailData.id }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>状态</span>
+                <strong>{{ formatBinaryStatus(detailData.status).text }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>创建时间</span>
+                <strong>{{ formatDateTime(detailData.createTime) }}</strong>
+              </div>
+            </div>
+
+            <div v-else-if="detailMode === TYPE_PARKING_POINT && detailData" class="detail-grid">
+              <div class="detail-item">
+                <span>停车点名称</span>
+                <strong>{{ detailData.name || '--' }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>停车点 ID</span>
+                <strong>#{{ detailData.id }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>状态</span>
+                <strong>{{ formatBinaryStatus(detailData.status).text }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>坐标</span>
+                <strong>{{ formatCoordinate(detailData) }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>创建时间</span>
+                <strong>{{ formatDateTime(detailData.createTime) }}</strong>
+              </div>
+            </div>
+
+            <div v-else-if="detailMode === TYPE_SCOOTER && detailData" class="detail-grid">
+              <div class="detail-item">
+                <span>车辆编码</span>
+                <strong>{{ detailData.code || '--' }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>车辆 ID</span>
+                <strong>#{{ detailData.id }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>骑行状态</span>
+                <strong>{{ getRideText(detailData) }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>故障状态</span>
+                <strong>{{ getFaultText(detailData) }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>电量</span>
+                <strong>{{ detailData.battery === null ? '--' : `${detailData.battery}%` }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>坐标</span>
+                <strong>{{ formatCoordinate(detailData) }}</strong>
+              </div>
+              <div class="detail-item">
+                <span>创建时间</span>
+                <strong>{{ formatDateTime(detailData.createTime) }}</strong>
+              </div>
+            </div>
+
+            <div v-else class="empty-state">请选择具体对象或点击地图查看详情。</div>
+
+            <div v-if="canEditCurrentDetail" class="detail-actions">
+              <button type="button" class="button-primary" @click="gotoEdit">{{ editButtonText }}</button>
+            </div>
           </section>
         </aside>
       </div>
@@ -218,7 +611,7 @@ onMounted(async () => {
 
 .vehicle-manage-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 16px;
 }
 
@@ -291,6 +684,12 @@ onMounted(async () => {
   margin-top: 6px;
   font-size: 15px;
   font-weight: 400;
+}
+
+.detail-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 @media (max-width: 980px) {

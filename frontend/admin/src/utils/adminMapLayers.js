@@ -18,9 +18,11 @@ const toNumberOrNull = (value) => {
 }
 
 const normalizeScooter = (item = {}) => {
+  const code = item.code || `Scooter #${item.id}`
+
   return {
     id: item.id,
-    code: item.code || '',
+    code,
     areaId: toNumberOrNull(item.areaId ?? item.area_id),
     faultStatus: Number(item.faultStatus ?? item.fault_status ?? 0),
     rideStatus: Number(item.rideStatus ?? item.ride_status ?? 0),
@@ -37,8 +39,9 @@ const normalizeParkingPoint = (item = {}) => {
 
   return {
     id: item.id,
-    name: item.name || `停车点 #${item.id}`,
+    name: item.name || `Parking Point #${item.id}`,
     status: Number(item.status ?? 1),
+    createTime: item.create_time || item.createTime || '',
     longitude,
     latitude
   }
@@ -46,26 +49,25 @@ const normalizeParkingPoint = (item = {}) => {
 
 const normalizeZone = (item = {}, dispatchersByArea = {}) => {
   const dispatcher = dispatchersByArea[Number(item.id)] || null
-  const name = item.name || `片区 #${item.id}`
 
   return {
     id: item.id,
-    name,
+    name: item.name || `Zone #${item.id}`,
     polygon: item.polygon || '',
+    createTime: item.createTime || item.create_time || '',
+    dispatcher,
     dispatcherName: dispatcher?.name || '',
-    dispatcherEmail: dispatcher?.email || '',
-    label: dispatcher?.name ? `${name} / 调度员：${dispatcher.name}` : name
+    dispatcherEmail: dispatcher?.email || ''
   }
 }
 
 const normalizeNoParkingZone = (item = {}) => {
-  const name = item.name || `禁停区 #${item.id}`
-
   return {
     id: item.id,
-    name,
+    name: item.name || `No Parking Zone #${item.id}`,
     polygon: item.polygon || '',
-    label: name
+    status: Number(item.status ?? 1),
+    createTime: item.createTime || item.create_time || ''
   }
 }
 

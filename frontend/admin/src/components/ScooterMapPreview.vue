@@ -27,6 +27,18 @@ const props = defineProps({
     type: [String, Number],
     default: ''
   },
+  selectedZoneId: {
+    type: [String, Number],
+    default: ''
+  },
+  selectedNoParkingZoneId: {
+    type: [String, Number],
+    default: ''
+  },
+  selectedParkingPointId: {
+    type: [String, Number],
+    default: ''
+  },
   focusZoneId: {
     type: [String, Number],
     default: ''
@@ -49,7 +61,6 @@ let scooterMarkers = []
 let zoneOverlays = []
 let noParkingOverlays = []
 let parkingPointMarkers = []
-let labels = []
 let mapResizeObserver = null
 
 const mapHeightStyle = computed(() => ({
@@ -84,7 +95,7 @@ const clearOverlayList = (overlayListRef) => {
   return []
 }
 
-const getMarkerStyle = (scooter, active) => {
+const getScooterStyle = (scooter, active) => {
   if (active) {
     return {
       radius: 8,
@@ -111,35 +122,46 @@ const getMarkerStyle = (scooter, active) => {
   }
 }
 
-const getPolygonCenterFromPath = (path) => {
-  if (!Array.isArray(path) || !path.length) {
-    return null
+const getZoneStyle = (active) => {
+  if (active) {
+    return {
+      strokeColor: '#0b0e0d',
+      strokeWeight: 3,
+      strokeOpacity: 1,
+      fillColor: '#4d9ed8',
+      fillOpacity: 0.22
+    }
   }
 
-  const summary = path.reduce(
-    (result, point) => ({
-      longitude: result.longitude + Number(point[0]),
-      latitude: result.latitude + Number(point[1])
-    }),
-    { longitude: 0, latitude: 0 }
-  )
-
-  return [summary.longitude / path.length, summary.latitude / path.length]
+  return {
+    strokeColor: '#0a5e9a',
+    strokeWeight: 2,
+    strokeOpacity: 0.9,
+    fillColor: '#4d9ed8',
+    fillOpacity: 0.12
+  }
 }
 
-const createLabelMarker = (position, text) => {
-  if (!AMap || !Array.isArray(position) || position.length !== 2 || !text) {
-    return null
+const getNoParkingStyle = (active) => {
+  if (active) {
+    return {
+      strokeColor: '#0b0e0d',
+      strokeWeight: 3,
+      strokeOpacity: 1,
+      strokeStyle: 'dashed',
+      fillColor: '#cf7b6f',
+      fillOpacity: 0.24
+    }
   }
 
-  return new AMap.Marker({
-    position,
-    zIndex: 310,
-    bubble: true,
-    offset: new AMap.Pixel(0, -4),
-    content: `<div class="map-name-label">${text}</div>`,
-    anchor: 'bottom-center'
-  })
+  return {
+    strokeColor: '#8f3a2d',
+    strokeWeight: 2,
+    strokeOpacity: 0.9,
+    strokeStyle: 'dashed',
+    fillColor: '#cf7b6f',
+    fillOpacity: 0.15
+  }
 }
 
 const renderZoneOverlays = () => {
@@ -156,15 +178,21 @@ const renderZoneOverlays = () => {
         return null
       }
 
-      return new AMap.Polygon({
+      const active = String(item.id) === String(props.selectedZoneId || '')
+      const polygon = new AMap.Polygon({
         path,
-        strokeColor: '#0a5e9a',
-        strokeWeight: 2,
-        strokeOpacity: 0.9,
-        fillColor: '#4d9ed8',
-        fillOpacity: 0.12,
-        bubble: true
+        bubble: true,
+        ...getZoneStyle(active)
       })
+
+      polygon.on('click', () => {
+        emit('select', {
+          type: 'zone',
+          item
+        })
+      })
+
+      return polygon
     })
     .filter(Boolean)
 
@@ -187,16 +215,21 @@ const renderNoParkingOverlays = () => {
         return null
       }
 
-      return new AMap.Polygon({
+      const active = String(item.id) === String(props.selectedNoParkingZoneId || '')
+      const polygon = new AMap.Polygon({
         path,
-        strokeColor: '#8f3a2d',
-        strokeWeight: 2,
-        strokeOpacity: 0.9,
-        strokeStyle: 'dashed',
-        fillColor: '#cf7b6f',
-        fillOpacity: 0.15,
-        bubble: true
+        bubble: true,
+        ...getNoParkingStyle(active)
       })
+
+      polygon.on('click', () => {
+        emit('select', {
+          type: 'noParkingZone',
+          item
+        })
+      })
+
+      return polygon
     })
     .filter(Boolean)
 
@@ -215,17 +248,27 @@ const renderParkingPointMarkers = () => {
   parkingPointMarkers = props.parkingPoints
     .filter((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
     .map((item) => {
-      return new AMap.CircleMarker({
+      const active = String(item.id) === String(props.selectedParkingPointId || '')
+      const marker = new AMap.CircleMarker({
         center: [item.longitude, item.latitude],
-        radius: 6,
+        radius: active ? 8 : 6,
         strokeColor: '#2b2b2b',
-        strokeWeight: 2,
+        strokeWeight: active ? 3 : 2,
         strokeOpacity: 1,
         fillColor: '#f8d65c',
         fillOpacity: 1,
-        zIndex: 240,
+        zIndex: active ? 250 : 240,
         bubble: true
       })
+
+      marker.on('click', () => {
+        emit('select', {
+          type: 'parkingPoint',
+          item
+        })
+      })
+
+      return marker
     })
 
   if (parkingPointMarkers.length) {
@@ -246,13 +289,16 @@ const renderScooters = () => {
       const active = String(item.id) === String(props.selectedScooterId || '')
       const marker = new AMap.CircleMarker({
         center: [item.longitude, item.latitude],
-        zIndex: active ? 260 : 250,
+        zIndex: active ? 270 : 260,
         bubble: true,
-        ...getMarkerStyle(item, active)
+        ...getScooterStyle(item, active)
       })
 
       marker.on('click', () => {
-        emit('select', item)
+        emit('select', {
+          type: 'scooter',
+          item
+        })
       })
 
       return marker
@@ -260,51 +306,6 @@ const renderScooters = () => {
 
   if (scooterMarkers.length) {
     map.add(scooterMarkers)
-  }
-}
-
-const renderLabels = () => {
-  if (!map || !AMap) {
-    return
-  }
-
-  labels = clearOverlayList(labels)
-
-  const zoneLabels = props.zones
-    .map((item) => {
-      const path = parsePolygonPoints(item.polygon).map((point) => [point.longitude, point.latitude])
-      if (path.length < 3) {
-        return null
-      }
-
-      const center = getPolygonCenterFromPath(path)
-      return createLabelMarker(center, item.label || item.name || `片区 #${item.id}`)
-    })
-    .filter(Boolean)
-
-  const noParkingLabels = props.noParkingZones
-    .map((item) => {
-      const path = parsePolygonPoints(item.polygon).map((point) => [point.longitude, point.latitude])
-      if (path.length < 3) {
-        return null
-      }
-
-      const center = getPolygonCenterFromPath(path)
-      return createLabelMarker(center, item.label || item.name || `禁停区 #${item.id}`)
-    })
-    .filter(Boolean)
-
-  const parkingPointLabels = props.parkingPoints
-    .filter((item) => Number.isFinite(item.longitude) && Number.isFinite(item.latitude))
-    .map((item) => {
-      return createLabelMarker([item.longitude, item.latitude], item.name || `停车点 #${item.id}`)
-    })
-    .filter(Boolean)
-
-  labels = [...zoneLabels, ...noParkingLabels, ...parkingPointLabels]
-
-  if (labels.length) {
-    map.add(labels)
   }
 }
 
@@ -348,7 +349,6 @@ const renderMapData = ({ fitView = true } = {}) => {
   renderNoParkingOverlays()
   renderParkingPointMarkers()
   renderScooters()
-  renderLabels()
 
   if (!fitView) {
     return
@@ -410,7 +410,6 @@ const destroyMap = () => {
   zoneOverlays = clearOverlayList(zoneOverlays)
   noParkingOverlays = clearOverlayList(noParkingOverlays)
   parkingPointMarkers = clearOverlayList(parkingPointMarkers)
-  labels = clearOverlayList(labels)
 
   if (map && typeof map.destroy === 'function') {
     map.destroy()
@@ -433,13 +432,13 @@ watch(
 )
 
 watch(
-  () => props.selectedScooterId,
+  () => [props.selectedScooterId, props.selectedZoneId, props.selectedNoParkingZoneId, props.selectedParkingPointId],
   () => {
     if (!map || !AMap) {
       return
     }
 
-    renderScooters()
+    renderMapData({ fitView: false })
   }
 )
 
@@ -528,20 +527,5 @@ onBeforeUnmount(destroyMap)
   padding: 12px 14px;
   font-size: 13px;
   color: #737373;
-}
-
-:global(.map-name-label) {
-  display: inline-block;
-  max-width: 220px;
-  padding: 2px 8px;
-  border: 1px solid #d8d8d3;
-  background: rgba(255, 255, 255, 0.95);
-  color: #1b1b1b;
-  font-size: 12px;
-  line-height: 1.4;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  border-radius: 2px;
 }
 </style>
