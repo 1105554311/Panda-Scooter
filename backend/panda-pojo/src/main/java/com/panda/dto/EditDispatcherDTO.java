@@ -2,6 +2,7 @@ package com.panda.dto;
 
 import lombok.Data;
 
+@Data
 public class EditDispatcherDTO {
     private Long id;
     private String name;
