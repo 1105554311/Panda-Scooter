@@ -96,4 +96,10 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updateAreaId">
+        UPDATE dispatcher
+        SET area_id = #{areaId}
+        WHERE id = #{id}
+    </update>
+
 </mapper>

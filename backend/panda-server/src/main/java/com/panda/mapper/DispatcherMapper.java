@@ -51,4 +51,6 @@ public interface DispatcherMapper {
      * 更新调度员
      */
     int updateDispatcher(Dispatcher dispatcher);
+
+    int updateAreaId(@Param("id") Long id, @Param("areaId") Long areaId);
 }

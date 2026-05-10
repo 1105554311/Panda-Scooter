@@ -894,17 +894,28 @@ public class AdminServiceImpl implements AdminService {
         if (editDispatcherDTO.getEmail() != null && !editDispatcherDTO.getEmail().isEmpty()) {
             updateDispatcher.setEmail(editDispatcherDTO.getEmail());
         }
-        if (editDispatcherDTO.getAreaId() != null) {
-            updateDispatcher.setAreaId(editDispatcherDTO.getAreaId());
-        }
+        boolean hasDispatcherBaseUpdate = updateDispatcher.getName() != null
+                || updateDispatcher.getPassword() != null
+                || updateDispatcher.getEmail() != null;
 
         // 更新数据库
-        int rows = dispatcherMapper.updateDispatcher(updateDispatcher);
+        int rows = hasDispatcherBaseUpdate ? dispatcherMapper.updateDispatcher(updateDispatcher) : 1;
         if (rows == 0) {
-            throw new BaseException("编辑调度员失败");
+            throw new BaseException("edit dispatcher failed");
         }
 
         // 获取更新后的调度员信息
+        if (editDispatcherDTO.isAreaIdPresent()) {
+            rows = dispatcherMapper.updateAreaId(editDispatcherDTO.getId(), editDispatcherDTO.getAreaId());
+            if (rows == 0) {
+                throw new BaseException("edit dispatcher area failed");
+            }
+        }
+
+        if (!hasDispatcherBaseUpdate && !editDispatcherDTO.isAreaIdPresent()) {
+            throw new BaseException("no fields to update");
+        }
+
         Dispatcher updatedDispatcher = dispatcherMapper.getById(editDispatcherDTO.getId());
 
         return EditDispatcherVO.builder()

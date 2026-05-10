@@ -9,4 +9,10 @@ public class EditDispatcherDTO {
     private String password;
     private String email;
     private Long areaId;
+    private boolean areaIdPresent;
+
+    public void setAreaId(Long areaId) {
+        this.areaId = areaId;
+        this.areaIdPresent = true;
+    }
 }
