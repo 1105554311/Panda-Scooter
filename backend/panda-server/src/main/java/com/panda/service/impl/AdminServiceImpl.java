@@ -894,9 +894,7 @@ public class AdminServiceImpl implements AdminService {
         if (editDispatcherDTO.getEmail() != null && !editDispatcherDTO.getEmail().isEmpty()) {
             updateDispatcher.setEmail(editDispatcherDTO.getEmail());
         }
-        if (editDispatcherDTO.getAreaId() != null) {
-            updateDispatcher.setAreaId(editDispatcherDTO.getAreaId());
-        }
+        updateDispatcher.setAreaId(editDispatcherDTO.getAreaId());
 
         // 更新数据库
         int rows = dispatcherMapper.updateDispatcher(updateDispatcher);

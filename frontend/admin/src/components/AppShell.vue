@@ -53,7 +53,7 @@ const handleLogout = async () => {
   <div class="shell" :data-sidebar-open="sidebarOpen">
     <header class="shell-topbar">
       <div class="brand">
-        <div class="brand-mark">PS</div>
+        <img class="brand-mark" src="/logo.png" alt="Panda Scooter logo">
         <div class="brand-text">
           <p class="brand-title">Panda Scooter</p>
           <p class="brand-subtitle">{{ pageTitle }}</p>
@@ -126,12 +126,8 @@ const handleLogout = async () => {
 .brand-mark {
   width: 48px;
   height: 48px;
-  display: grid;
-  place-items: center;
-  background: #0b0e0d;
-  color: #ffffff;
-  font-size: 18px;
-  letter-spacing: 0.12em;
+  display: block;
+  object-fit: contain;
 }
 
 .brand-text,
