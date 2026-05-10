@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import BaseModal from '@/components/BaseModal.vue'
 import MapLayerToggleBar from '@/components/MapLayerToggleBar.vue'
 import ZoneMapEditor from '@/components/ZoneMapEditor.vue'
-import { addZone, editZone, getDispatcherList, getZoneDetail } from '@/api'
+import { addZone, editDispatcher, editZone, getDispatcherList, getZoneDetail } from '@/api'
 import { ALL_MAP_LAYERS, MAP_LAYER_ZONE } from '@/utils/adminMapVisuals'
 import { useUiStore } from '@/stores/ui'
 import { getEditorCache, removeEditorCache } from '@/utils/editorCache'
@@ -21,10 +22,15 @@ const router = useRouter()
 const uiStore = useUiStore()
 
 const CACHE_SCOPE = 'zone'
+const FULL_FETCH_PAGE_SIZE = 200
+const MAX_FETCH_PAGES = 200
 const zoneId = computed(() => Number(route.params.id))
 const editing = computed(() => route.name === 'zone-edit')
 const saving = ref(false)
 const loading = ref(false)
+const dispatcherSaving = ref(false)
+const dispatcherModalOpen = ref(false)
+const selectedDispatcherId = ref('')
 const dispatchers = ref([])
 const zones = ref([])
 const noParkingZones = ref([])
@@ -35,7 +41,44 @@ const form = ref({
   id: '',
   name: '',
   polygon: '',
-  dispatcherIds: []
+  dispatchers: []
+})
+
+const normalizePositiveId = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? num : null
+}
+
+const getDispatcherAreaId = (item = {}) => {
+  return normalizePositiveId(item.areaId ?? item.area_id ?? item.area?.id)
+}
+
+const normalizeDispatcherItem = (item = {}) => {
+  const id = normalizePositiveId(item.id)
+  if (!id) {
+    return null
+  }
+
+  return {
+    ...item,
+    id,
+    name: typeof item.name === 'string' ? item.name.trim() : '',
+    email: typeof item.email === 'string' ? item.email.trim() : '',
+    areaId: getDispatcherAreaId(item)
+  }
+}
+
+const normalizedDispatchers = computed(() => {
+  return dispatchers.value
+    .map((item) => normalizeDispatcherItem(item))
+    .filter(Boolean)
+})
+
+const dispatcherById = computed(() => {
+  return normalizedDispatchers.value.reduce((result, item) => {
+    result.set(item.id, item)
+    return result
+  }, new Map())
 })
 
 const otherZones = computed(() => {
@@ -52,6 +95,94 @@ const polygonCenterText = computed(() => {
 
 const pageTitle = computed(() => (editing.value ? '编辑片区' : '新增片区'))
 
+const currentZoneId = computed(() => normalizePositiveId(form.value.id) || normalizePositiveId(zoneId.value))
+
+const currentDispatchers = computed(() => {
+  const zoneIdValue = currentZoneId.value
+  if (!zoneIdValue) {
+    return []
+  }
+
+  const byId = new Map()
+  const addCurrentDispatcher = (item, fallbackAreaId = null) => {
+    const normalized = normalizeDispatcherItem(item)
+    if (!normalized) {
+      return
+    }
+
+    const canonical = dispatcherById.value.get(normalized.id)
+    const areaId = canonical
+      ? getDispatcherAreaId(canonical)
+      : getDispatcherAreaId(normalized) || fallbackAreaId
+    if (areaId !== zoneIdValue) {
+      return
+    }
+
+    byId.set(normalized.id, {
+      ...normalized,
+      ...canonical,
+      id: normalized.id,
+      name: canonical?.name || normalized.name,
+      email: canonical?.email || normalized.email,
+      areaId: zoneIdValue
+    })
+  }
+
+  normalizedDispatchers.value.forEach((item) => addCurrentDispatcher(item))
+
+  getZoneDispatchers({
+    id: zoneIdValue,
+    dispatchers: form.value.dispatchers
+  }).forEach((item) => addCurrentDispatcher(item, zoneIdValue))
+
+  const zoneRecord = zones.value.find((item) => normalizePositiveId(item.id) === zoneIdValue)
+  if (zoneRecord) {
+    getZoneDispatchers(zoneRecord).forEach((item) => addCurrentDispatcher(item, zoneIdValue))
+  }
+
+  return Array.from(byId.values())
+})
+
+const currentDispatcherIds = computed(() => {
+  return new Set(currentDispatchers.value.map((item) => normalizePositiveId(item.id)).filter(Boolean))
+})
+
+const assignedDispatcherIds = computed(() => {
+  const result = new Set()
+
+  normalizedDispatchers.value.forEach((item) => {
+    if (item.areaId) {
+      result.add(item.id)
+    }
+  })
+
+  zones.value.forEach((zone) => {
+    const areaId = normalizePositiveId(zone.id)
+    if (!areaId) {
+      return
+    }
+
+    getZoneDispatchers(zone).forEach((item) => {
+      const dispatcherId = normalizePositiveId(item.id)
+      if (dispatcherId) {
+        result.add(dispatcherId)
+      }
+    })
+  })
+
+  currentDispatchers.value.forEach((item) => {
+    result.add(item.id)
+  })
+
+  return result
+})
+
+const availableDispatchers = computed(() => {
+  return normalizedDispatchers.value.filter((item) => {
+    return item.id && !currentDispatcherIds.value.has(item.id) && !assignedDispatcherIds.value.has(item.id)
+  })
+})
+
 const applyRecord = (item) => {
   const selectedDispatchers = getZoneDispatchers(item)
 
@@ -59,32 +190,56 @@ const applyRecord = (item) => {
     id: item.id,
     name: item.name || '',
     polygon: item.polygon ? normalizeZonePolygonForEditor(item.polygon) : '',
-    dispatcherIds: selectedDispatchers.map((dispatcher) => String(dispatcher.id))
+    dispatchers: selectedDispatchers
   }
 }
 
-const buildDispatchersPayload = () => {
-  const ids = Array.from(
-    new Set(
-      (Array.isArray(form.value.dispatcherIds) ? form.value.dispatcherIds : [])
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value) && value > 0)
-    )
-  )
+const getDispatcherName = (item = {}, index = 0) => {
+  return item.name || `调度员 ${index + 1}`
+}
 
-  return ids.map((id) => {
-    const matched = dispatchers.value.find((item) => Number(item.id) === id)
-    return matched?.name ? { id, name: matched.name } : { id }
-  })
+const fetchAllItems = async (requester, listKey) => {
+  let page = 1
+  let apiTotal = null
+  const merged = []
+
+  while (page <= MAX_FETCH_PAGES) {
+    const response = await requester({
+      page,
+      pageSize: FULL_FETCH_PAGE_SIZE
+    })
+
+    const data = response.data || {}
+    const list = Array.isArray(data[listKey]) ? data[listKey] : []
+    const totalFromApi = Number(data.total)
+
+    if (Number.isFinite(totalFromApi) && totalFromApi >= 0) {
+      apiTotal = totalFromApi
+    }
+
+    merged.push(...list)
+
+    if (!list.length) {
+      break
+    }
+
+    if (apiTotal !== null && merged.length >= apiTotal) {
+      break
+    }
+
+    if (list.length < FULL_FETCH_PAGE_SIZE) {
+      break
+    }
+
+    page += 1
+  }
+
+  return merged
 }
 
 const fetchDispatchers = async () => {
   try {
-    const response = await getDispatcherList({
-      page: 1,
-      pageSize: 200
-    })
-    dispatchers.value = response.data?.dispatcherList || []
+    dispatchers.value = await fetchAllItems(getDispatcherList, 'dispatcherList')
   } catch (error) {
     dispatchers.value = []
   }
@@ -150,6 +305,103 @@ const fetchDetail = async () => {
   }
 }
 
+const refreshDispatcherState = async () => {
+  await Promise.all([fetchDispatchers(), fetchDetail(), fetchMapLayers()])
+}
+
+const openDispatcherModal = async () => {
+  if (!editing.value || !currentZoneId.value) {
+    uiStore.pushToast({
+      message: '请先保存片区后再添加调度员',
+      tone: 'warning'
+    })
+    return
+  }
+
+  selectedDispatcherId.value = ''
+  await Promise.all([fetchDispatchers(), fetchMapLayers()])
+  dispatcherModalOpen.value = true
+}
+
+const addDispatcherToZone = async () => {
+  const dispatcherId = normalizePositiveId(selectedDispatcherId.value)
+
+  if (!dispatcherId || !currentZoneId.value) {
+    uiStore.pushToast({
+      message: '请选择要添加的调度员',
+      tone: 'warning'
+    })
+    return
+  }
+
+  const selectedDispatcher = availableDispatchers.value.find((item) => item.id === dispatcherId)
+  if (!selectedDispatcher) {
+    uiStore.pushToast({
+      message: '该调度员已被分配，请刷新后重试',
+      tone: 'warning'
+    })
+    return
+  }
+
+  dispatcherSaving.value = true
+
+  try {
+    await editDispatcher({
+      id: dispatcherId,
+      areaId: currentZoneId.value
+    })
+
+    uiStore.pushToast({
+      message: '调度员已添加到当前片区',
+      tone: 'success'
+    })
+
+    dispatcherModalOpen.value = false
+    await refreshDispatcherState()
+  } catch (error) {
+  } finally {
+    dispatcherSaving.value = false
+  }
+}
+
+const removeDispatcherFromZone = async (item) => {
+  const dispatcherId = normalizePositiveId(item.id)
+
+  if (!dispatcherId) {
+    return
+  }
+
+  const confirmed = await uiStore.confirmAction({
+    title: '删除片区调度员',
+    message: `确认从当前片区删除调度员“${item.name || dispatcherId}”吗？`,
+    confirmText: '删除',
+    tone: 'danger'
+  })
+
+  if (!confirmed) {
+    return
+  }
+
+  dispatcherSaving.value = true
+
+  try {
+    await editDispatcher({
+      id: dispatcherId,
+      areaId: null
+    })
+
+    uiStore.pushToast({
+      message: '调度员已从当前片区删除',
+      tone: 'success'
+    })
+
+    await refreshDispatcherState()
+  } catch (error) {
+  } finally {
+    dispatcherSaving.value = false
+  }
+}
+
 const goBack = () => {
   router.push({ name: 'zones' })
 }
@@ -177,8 +429,7 @@ const submit = async () => {
   try {
     const payload = {
       name: form.value.name.trim(),
-      polygon: formatZonePolygonForApi(validation.points),
-      dispatchers: buildDispatchersPayload()
+      polygon: formatZonePolygonForApi(validation.points)
     }
 
     if (editing.value) {
@@ -260,14 +511,40 @@ onMounted(async () => {
               <input v-model.trim="form.name" class="field-input" type="text" placeholder="例如：中央商务区" />
             </label>
 
-            <label class="form-field span-12">
-              <span class="field-label">调度员</span>
-              <select v-model="form.dispatcherIds" class="field-select" multiple>
-                <option v-for="item in dispatchers" :key="item.id" :value="String(item.id)">
-                  {{ item.name }}{{ item.areaId ? ` / 当前片区 ${item.areaId}` : '' }}
-                </option>
-              </select>
-            </label>
+            <div class="form-field span-12">
+              <div class="dispatcher-header">
+                <span class="field-label">片区调度员</span>
+                <button
+                  type="button"
+                  class="button-secondary button-compact"
+                  :disabled="loading || dispatcherSaving"
+                  @click="openDispatcherModal"
+                >
+                  添加
+                </button>
+              </div>
+
+              <div v-if="currentDispatchers.length" class="dispatcher-list">
+                <div v-for="(item, index) in currentDispatchers" :key="item.id" class="dispatcher-item">
+                  <div class="dispatcher-info">
+                    <strong>{{ getDispatcherName(item, index) }}</strong>
+                    <span v-if="item.email">{{ item.email }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="button-danger button-compact"
+                    :disabled="dispatcherSaving"
+                    @click="removeDispatcherFromZone(item)"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+
+              <div v-else class="empty-state dispatcher-empty">
+                {{ editing ? '当前片区暂无调度员。' : '创建片区后可添加调度员。' }}
+              </div>
+            </div>
           </div>
 
           <div class="summary-grid">
@@ -299,6 +576,38 @@ onMounted(async () => {
         </section>
       </div>
     </section>
+
+    <BaseModal v-model="dispatcherModalOpen" title="添加调度员" width="560px">
+      <div v-if="availableDispatchers.length" class="add-dispatcher-list">
+        <label
+          v-for="item in availableDispatchers"
+          :key="item.id"
+          class="add-dispatcher-option"
+          :class="{ selected: selectedDispatcherId === String(item.id) }"
+        >
+          <input v-model="selectedDispatcherId" type="radio" :value="String(item.id)" />
+          <span>
+            <strong>{{ item.name }}</strong>
+            <small>{{ item.email || '未填写邮箱' }}</small>
+          </span>
+        </label>
+      </div>
+      <div v-else class="empty-state">暂无未分配调度员。</div>
+
+      <template #footer>
+        <div class="button-row">
+          <button type="button" class="button-secondary" @click="dispatcherModalOpen = false">取消</button>
+          <button
+            type="button"
+            class="button-primary"
+            :disabled="dispatcherSaving || !selectedDispatcherId"
+            @click="addDispatcherToZone"
+          >
+            {{ dispatcherSaving ? '添加中...' : '添加' }}
+          </button>
+        </div>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -353,6 +662,75 @@ onMounted(async () => {
 .map-panel {
   display: grid;
   gap: 12px;
+}
+
+.dispatcher-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.button-compact {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.dispatcher-list,
+.add-dispatcher-list {
+  display: grid;
+  gap: 10px;
+}
+
+.dispatcher-item,
+.add-dispatcher-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-subtle);
+  padding: 10px 12px;
+}
+
+.dispatcher-info,
+.add-dispatcher-option span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.dispatcher-info strong,
+.add-dispatcher-option strong {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.dispatcher-info span,
+.add-dispatcher-option small {
+  color: var(--text-subtle);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dispatcher-empty {
+  padding: 18px 12px;
+}
+
+.add-dispatcher-option {
+  justify-content: flex-start;
+  cursor: pointer;
+}
+
+.add-dispatcher-option.selected {
+  border-color: var(--text-main);
+  background: #ffffff;
+}
+
+.add-dispatcher-option input {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 1080px) {
