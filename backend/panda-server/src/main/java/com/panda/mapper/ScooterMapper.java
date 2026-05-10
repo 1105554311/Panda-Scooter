@@ -22,6 +22,8 @@ public interface ScooterMapper {
 
     List<Scooter> listLocated();
 
+    List<Scooter> listAll();
+
     int updateRideStatus(@Param("id") Long id, @Param("rideStatus") Integer rideStatus);
 
     int updateStatusAndLocation(@Param("id") Long id,

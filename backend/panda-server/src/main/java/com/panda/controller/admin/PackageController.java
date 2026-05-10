@@ -55,7 +55,10 @@ public class PackageController {
      * 删除套餐
      */
     @DeleteMapping("/deletePackage")
-    public Result<Void> deletePackage(@RequestBody DeletePackageDTO deletePackageDTO) {
+    public Result<Void> deletePackage(@RequestParam("packageId") Long packageId,
+                                      @RequestParam(value = "title", required = false) String title) {
+        DeletePackageDTO deletePackageDTO = new DeletePackageDTO();
+        deletePackageDTO.setId(packageId);
         log.info("删除套餐请求，参数：{}", deletePackageDTO);
         adminService.deletePackage(deletePackageDTO);
         return Result.success();

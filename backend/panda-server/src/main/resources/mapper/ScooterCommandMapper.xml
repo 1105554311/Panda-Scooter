@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.panda.mapper.ScooterCommandMapper">
+
+    <resultMap id="scooterCommandResultMap" type="com.panda.entity.ScooterCommand">
+        <id property="id" column="id"/>
+        <result property="commandId" column="command_id"/>
+        <result property="scooterId" column="scooter_id"/>
+        <result property="scooterCode" column="scooter_code"/>
+        <result property="orderId" column="order_id"/>
+        <result property="commandType" column="command_type"/>
+        <result property="payload" column="payload"/>
+        <result property="status" column="status"/>
+        <result property="retryCount" column="retry_count"/>
+        <result property="maxRetryCount" column="max_retry_count"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="sendTime" column="send_time"/>
+        <result property="ackTime" column="ack_time"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.panda.entity.ScooterCommand" useGeneratedKeys="true" keyProperty="id">
+        insert into scooter_command
+        (command_id, scooter_id, scooter_code, order_id, command_type, payload, status, retry_count, max_retry_count,
+         error_message, send_time, ack_time, create_time, update_time)
+        values
+        (#{commandId}, #{scooterId}, #{scooterCode}, #{orderId}, #{commandType}, #{payload}, #{status},
+         #{retryCount}, #{maxRetryCount}, #{errorMessage}, #{sendTime}, #{ackTime}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="markSent">
+        update scooter_command
+        set status = 1,
+            send_time = #{sendTime},
+            error_message = null,
+            update_time = now()
+        where command_id = #{commandId}
+    </update>
+
+    <update id="markFailed">
+        update scooter_command
+        set status = 3,
+            error_message = #{errorMessage},
+            update_time = now()
+        where command_id = #{commandId}
+    </update>
+
+    <update id="markAcked">
+        update scooter_command
+        set status = 2,
+            ack_time = #{ackTime},
+            error_message = null,
+            update_time = now()
+        where command_id = #{commandId}
+          and status in (0, 1, 3)
+    </update>
+
+    <update id="markAckFailed">
+        update scooter_command
+        set status = 3,
+            ack_time = #{ackTime},
+            error_message = #{errorMessage},
+            update_time = now()
+        where command_id = #{commandId}
+          and status in (0, 1, 3)
+    </update>
+
+    <select id="listRetryableTimeoutCommands" resultMap="scooterCommandResultMap">
+        select id, command_id, scooter_id, scooter_code, order_id, command_type, payload, status,
+               retry_count, max_retry_count, error_message, send_time, ack_time, create_time, update_time
+        from scooter_command
+        where status in (0, 1)
+          and retry_count &lt; max_retry_count
+          and ((status = 0 and create_time &lt;= #{deadline})
+            or (status = 1 and send_time &lt;= #{deadline}))
+        order by id asc
+        limit #{limit}
+    </select>
+
+    <update id="markRetrySent">
+        update scooter_command
+        set status = 1,
+            retry_count = retry_count + 1,
+            send_time = #{sendTime},
+            error_message = null,
+            update_time = now()
+        where command_id = #{commandId}
+          and status in (0, 1)
+          and retry_count &lt; max_retry_count
+    </update>
+
+    <update id="markRetryError">
+        update scooter_command
+        set error_message = #{errorMessage},
+            update_time = now()
+        where command_id = #{commandId}
+          and status in (0, 1)
+    </update>
+
+    <update id="markTimeoutCommands">
+        update scooter_command
+        set status = 4,
+            error_message = #{errorMessage},
+            update_time = now()
+        where status in (0, 1)
+          and retry_count &gt;= max_retry_count
+          and ((status = 0 and create_time &lt;= #{deadline})
+            or (status = 1 and send_time &lt;= #{deadline}))
+    </update>
+
+</mapper>

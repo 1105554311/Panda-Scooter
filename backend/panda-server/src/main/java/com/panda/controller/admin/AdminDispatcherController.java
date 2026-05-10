@@ -1,6 +1,7 @@
 package com.panda.controller.admin;
 
 import com.panda.dto.AddDispatcherDTO;
+import com.panda.dto.DeleteDispatcherDTO;
 import com.panda.dto.DispatcherListDTO;
 import com.panda.dto.EditDispatcherDTO;
 import com.panda.result.Result;
@@ -45,5 +46,11 @@ public class AdminDispatcherController {
         log.info("编辑调度员请求，参数：{}", editDispatcherDTO);
         EditDispatcherVO editDispatcherVO = adminService.editDispatcher(editDispatcherDTO);
         return Result.success(editDispatcherVO);
+    }
+    @DeleteMapping("/deleteDispatcher")
+    public Result<Void> deleteDispatcher(DeleteDispatcherDTO deleteDispatcherDTO) {
+        log.info("delete dispatcher, params: {}", deleteDispatcherDTO);
+        adminService.deleteDispatcher(deleteDispatcherDTO);
+        return Result.success();
     }
 }

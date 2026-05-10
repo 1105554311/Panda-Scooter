@@ -10,7 +10,7 @@ import java.util.List;
 public class DispatcherListVO {
     private List<DispatcherItem> dispatcherList;
     private Integer page;
-    private Integer pageSize;
+    private Integer pagesize;
     private Integer total;
 
     @Data

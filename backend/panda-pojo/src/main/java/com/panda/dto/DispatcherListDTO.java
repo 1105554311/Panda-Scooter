@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class DispatcherListDTO {
     private Integer page;
-    private Integer pageSize;
+    private Integer pagesize;
     private String keyword;
     private Long areaId;
 }

@@ -11,4 +11,60 @@
         order by id desc
     </select>
 
+    <select id="listForAdmin" resultType="com.panda.entity.ParkingPoint">
+        select id, name, latitude, longitude, status, create_time
+        from parking_point
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and name like concat('%', #{keyword}, '%')
+            </if>
+        </where>
+        order by id desc
+        limit #{offset}, #{pageSize}
+    </select>
+
+    <select id="countForAdmin" resultType="java.lang.Integer">
+        select count(*)
+        from parking_point
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and name like concat('%', #{keyword}, '%')
+            </if>
+        </where>
+    </select>
+
+    <select id="getById" resultType="com.panda.entity.ParkingPoint">
+        select id, name, latitude, longitude, status, create_time
+        from parking_point
+        where id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into parking_point (name, latitude, longitude, status, create_time)
+        values (#{name}, #{latitude}, #{longitude}, #{status}, #{createTime})
+    </insert>
+
+    <update id="update">
+        update parking_point
+        <set>
+            <if test="name != null and name != ''">
+                name = #{name},
+            </if>
+            <if test="latitude != null">
+                latitude = #{latitude},
+            </if>
+            <if test="longitude != null">
+                longitude = #{longitude},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        delete from parking_point where id = #{id}
+    </delete>
+
 </mapper>

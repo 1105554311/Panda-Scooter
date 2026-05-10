@@ -42,4 +42,24 @@ public interface AdminService {
     AddDispatcherVO addDispatcher(AddDispatcherDTO addDispatcherDTO);
 
     EditDispatcherVO editDispatcher(EditDispatcherDTO editDispatcherDTO);
+
+    void deleteDispatcher(DeleteDispatcherDTO deleteDispatcherDTO);
+
+    NoParkingZoneListVO getNoParkingZoneList(NoParkingZoneListDTO listDTO);
+
+    NoParkingZoneVO addNoParkingZone(AddNoParkingZoneDTO addDTO);
+
+    NoParkingZoneVO editNoParkingZone(EditNoParkingZoneDTO editDTO);
+
+    void deleteNoParkingZone(DeleteNoParkingZoneDTO deleteDTO);
+
+    ParkingPointListVO getParkingPointList(ParkingPointListDTO listDTO);
+
+    ParkingPointVO addParkingPoint(AddParkingPointDTO addDTO);
+
+    ParkingPointVO editParkingPoint(EditParkingPointDTO editDTO);
+
+    void deleteParkingPoint(DeleteParkingPointDTO deleteDTO);
+
+    AdminScooterListVO getScooterList(Integer areaId);
 }

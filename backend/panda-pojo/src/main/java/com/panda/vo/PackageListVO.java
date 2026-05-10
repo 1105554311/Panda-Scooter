@@ -11,7 +11,7 @@ import java.util.List;
 public class PackageListVO {
     private Integer total;
     private Integer page;
-    private Integer pageSize;
+    private Integer pagesize;
     private List<PackageItem> list;
 
     @Data

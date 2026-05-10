@@ -45,7 +45,9 @@ public class ZoneController {
      * 获取片区详情
      */
     @GetMapping("/getZoneDetail")
-    public Result<ZoneDetailVO> getZoneDetail(ZoneDetailDTO zoneDetailDTO) {
+    public Result<ZoneDetailVO> getZoneDetail(@RequestParam("areaId") Long areaId) {
+        ZoneDetailDTO zoneDetailDTO = new ZoneDetailDTO();
+        zoneDetailDTO.setId(areaId);
         log.info("获取片区详情请求，参数：{}", zoneDetailDTO);
         ZoneDetailVO zoneDetailVO = adminService.getZoneDetail(zoneDetailDTO);
         return Result.success(zoneDetailVO);
@@ -65,7 +67,11 @@ public class ZoneController {
      * 删除片区
      */
     @DeleteMapping("/deleteZone")
-    public Result<Void> deleteZone(@RequestBody DeleteZoneDTO deleteZoneDTO) {
+    public Result<Void> deleteZone(@RequestParam("areaId") Long areaId,
+                                   @RequestParam(value = "name", required = false) String name) {
+        DeleteZoneDTO deleteZoneDTO = new DeleteZoneDTO();
+        deleteZoneDTO.setId(areaId);
+        deleteZoneDTO.setName(name);
         log.info("删除片区请求，参数：{}", deleteZoneDTO);
         adminService.deleteZone(deleteZoneDTO);
         return Result.success();

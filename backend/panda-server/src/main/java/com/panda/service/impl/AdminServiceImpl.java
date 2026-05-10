@@ -21,9 +21,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @Slf4j
@@ -58,6 +60,12 @@ public class AdminServiceImpl implements AdminService {
 
     @Autowired
     private DispatcherMapper dispatcherMapper;
+
+    @Autowired
+    private NoParkingAreaMapper noParkingAreaMapper;
+
+    @Autowired
+    private ParkingPointMapper parkingPointMapper;
 
     @Override
     public AdminLoginVO login(AdminLoginDTO adminLoginDTO) {
@@ -182,7 +190,7 @@ public class AdminServiceImpl implements AdminService {
 
         // 设置默认值
         int page = packageListDTO.getPage() != null ? packageListDTO.getPage() : 1;
-        int pageSize = packageListDTO.getPageSize() != null ? packageListDTO.getPageSize() : 10;
+        int pageSize = packageListDTO.getPagesize() != null ? packageListDTO.getPagesize() : 10;
         int offset = (page - 1) * pageSize;
 
         String keyword = packageListDTO.getKeyword();
@@ -209,7 +217,7 @@ public class AdminServiceImpl implements AdminService {
         return PackageListVO.builder()
                 .total(total != null ? total : 0)
                 .page(page)
-                .pageSize(pageSize)
+                .pagesize(pageSize)
                 .list(items)
                 .build();
     }
@@ -333,7 +341,7 @@ public class AdminServiceImpl implements AdminService {
 
         // 设置默认值
         int page = zoneListDTO.getPage() != null ? zoneListDTO.getPage() : 1;
-        int pageSize = zoneListDTO.getPageSize() != null ? zoneListDTO.getPageSize() : 10;
+        int pageSize = zoneListDTO.getPagesize() != null ? zoneListDTO.getPagesize() : 10;
         int offset = (page - 1) * pageSize;
 
         String keyword = zoneListDTO.getKeyword();
@@ -351,6 +359,7 @@ public class AdminServiceImpl implements AdminService {
                         .name(area.getName())
                         .polygon(area.getPolygon())
                         .createTime(area.getCreateTime())
+                        .dispatchers(buildZoneListDispatchers(area.getId()))
                         .build());
             }
         }
@@ -358,7 +367,7 @@ public class AdminServiceImpl implements AdminService {
         return ZoneListVO.builder()
                 .areaList(items)
                 .page(page)
-                .pageSize(pageSize)
+                .pagesize(pageSize)
                 .total(total != null ? total : 0)
                 .build();
     }
@@ -385,6 +394,17 @@ public class AdminServiceImpl implements AdminService {
         }
 
         // 计算多边形点数（如果 polygon 是 JSON 数组格式）
+        if (addZoneDTO.getDispatcherId() != null) {
+            Dispatcher dispatcher = dispatcherMapper.getById(addZoneDTO.getDispatcherId().longValue());
+            if (dispatcher == null) {
+                throw new BaseException("dispatcher not found");
+            }
+            Dispatcher updateDispatcher = new Dispatcher();
+            updateDispatcher.setId(dispatcher.getId());
+            updateDispatcher.setAreaId(area.getId());
+            dispatcherMapper.updateDispatcher(updateDispatcher);
+        }
+
         Integer polygonPointCount = 0;
         if (addZoneDTO.getPolygon() != null && !addZoneDTO.getPolygon().isEmpty()) {
             // 简单计算点数，根据实际格式调整
@@ -399,7 +419,7 @@ public class AdminServiceImpl implements AdminService {
                 .id(area.getId())
                 .name(area.getName())
                 .polygon(area.getPolygon())
-                .dispatcherId(addZoneDTO.getDispatcherId())
+                .dispatchers(buildAddZoneDispatchers(area.getId()))
                 .polygonPointCount(polygonPointCount)
                 .createdBy(createdBy)
                 .build();
@@ -408,6 +428,74 @@ public class AdminServiceImpl implements AdminService {
     /**
      * 计算多边形点数
      */
+    private List<ZoneListVO.DispatcherInfo> buildZoneListDispatchers(Long areaId) {
+        List<ZoneListVO.DispatcherInfo> result = new ArrayList<>();
+        List<Dispatcher> dispatchers = dispatcherMapper.listByAreaId(areaId);
+        if (dispatchers != null) {
+            for (Dispatcher dispatcher : dispatchers) {
+                result.add(ZoneListVO.DispatcherInfo.builder()
+                        .id(dispatcher.getId())
+                        .name(dispatcher.getName())
+                        .build());
+            }
+        }
+        return result;
+    }
+
+    private List<AddZoneVO.DispatcherInfo> buildAddZoneDispatchers(Long areaId) {
+        List<AddZoneVO.DispatcherInfo> result = new ArrayList<>();
+        List<Dispatcher> dispatchers = dispatcherMapper.listByAreaId(areaId);
+        if (dispatchers != null) {
+            for (Dispatcher dispatcher : dispatchers) {
+                result.add(AddZoneVO.DispatcherInfo.builder()
+                        .id(dispatcher.getId())
+                        .name(dispatcher.getName())
+                        .build());
+            }
+        }
+        return result;
+    }
+
+    private List<ZoneDetailVO.DispatcherInfo> buildZoneDetailDispatchers(Long areaId) {
+        List<ZoneDetailVO.DispatcherInfo> result = new ArrayList<>();
+        List<Dispatcher> dispatchers = dispatcherMapper.listByAreaId(areaId);
+        if (dispatchers != null) {
+            for (Dispatcher dispatcher : dispatchers) {
+                result.add(ZoneDetailVO.DispatcherInfo.builder()
+                        .id(dispatcher.getId())
+                        .name(dispatcher.getName())
+                        .email(dispatcher.getEmail())
+                        .areaId(dispatcher.getAreaId())
+                        .build());
+            }
+        }
+        return result;
+    }
+
+    private List<EditZoneVO.DispatcherInfo> buildEditZoneDispatchers(Long areaId) {
+        List<EditZoneVO.DispatcherInfo> result = new ArrayList<>();
+        List<Dispatcher> dispatchers = dispatcherMapper.listByAreaId(areaId);
+        if (dispatchers != null) {
+            for (Dispatcher dispatcher : dispatchers) {
+                result.add(EditZoneVO.DispatcherInfo.builder()
+                        .id(dispatcher.getId())
+                        .name(dispatcher.getName())
+                        .email(dispatcher.getEmail())
+                        .areaId(dispatcher.getAreaId())
+                        .build());
+            }
+        }
+        return result;
+    }
+
+    private Integer countScootersInArea(String polygonText) {
+        List<List<Double>> polygon = parsePolygon(polygonText);
+        if (polygon.size() < 3) {
+            return 0;
+        }
+        return findScootersInPolygon(scooterMapper.listLocated(), polygon).size();
+    }
+
     private Integer countPolygonPoints(String polygon) {
         if (polygon == null || polygon.isEmpty()) {
             return 0;
@@ -599,6 +687,9 @@ public class AdminServiceImpl implements AdminService {
                 .id(area.getId())
                 .name(area.getName())
                 .polygon(area.getPolygon())
+                .createTime(area.getCreateTime())
+                .dispatchers(buildZoneDetailDispatchers(area.getId()))
+                .vehicleCount(countScootersInArea(area.getPolygon()))
                 .build();
     }
 
@@ -645,20 +736,9 @@ public class AdminServiceImpl implements AdminService {
                 .build();
 
         // 查询该片区下的调度员（取第一个）
-        EditZoneVO.DispatcherInfo dispatcherInfo = null;
-        Dispatcher dispatcher = dispatcherMapper.getByAreaId(updatedArea.getId());
-        if (dispatcher != null) {
-            dispatcherInfo = EditZoneVO.DispatcherInfo.builder()
-                    .id(dispatcher.getId())
-                    .name(dispatcher.getName())
-                    .email(dispatcher.getEmail())
-                    .areaId(dispatcher.getAreaId())
-                    .build();
-        }
-
         return EditZoneVO.builder()
                 .zone(zoneInfo)
-                .dispatcher(dispatcherInfo)
+                .dispatchers(buildEditZoneDispatchers(updatedArea.getId()))
                 .build();
     }
 
@@ -699,7 +779,7 @@ public class AdminServiceImpl implements AdminService {
 
         // 设置默认值
         int page = dispatcherListDTO.getPage() != null ? dispatcherListDTO.getPage() : 1;
-        int pageSize = dispatcherListDTO.getPageSize() != null ? dispatcherListDTO.getPageSize() : 10;
+        int pageSize = dispatcherListDTO.getPagesize() != null ? dispatcherListDTO.getPagesize() : 10;
         int offset = (page - 1) * pageSize;
 
         String keyword = dispatcherListDTO.getKeyword();
@@ -726,7 +806,7 @@ public class AdminServiceImpl implements AdminService {
         return DispatcherListVO.builder()
                 .dispatcherList(items)
                 .page(page)
-                .pageSize(pageSize)
+                .pagesize(pageSize)
                 .total(total != null ? total : 0)
                 .build();
     }
@@ -837,6 +917,299 @@ public class AdminServiceImpl implements AdminService {
                         .createTime(updatedDispatcher.getCreateTime())
                         .build())
                 .build();
+    }
+
+    @Override
+    public void deleteDispatcher(DeleteDispatcherDTO deleteDispatcherDTO) {
+        if (deleteDispatcherDTO.getDispatcherId() == null) {
+            throw new BaseException("dispatcherId is required");
+        }
+        Dispatcher dispatcher = dispatcherMapper.getById(deleteDispatcherDTO.getDispatcherId());
+        if (dispatcher == null) {
+            throw new BaseException("dispatcher not found");
+        }
+        if (deleteDispatcherDTO.getName() != null && !deleteDispatcherDTO.getName().isEmpty()
+                && !deleteDispatcherDTO.getName().equals(dispatcher.getName())) {
+            throw new BaseException("dispatcher name does not match");
+        }
+        if (deleteDispatcherDTO.getEmail() != null && !deleteDispatcherDTO.getEmail().isEmpty()
+                && !deleteDispatcherDTO.getEmail().equals(dispatcher.getEmail())) {
+            throw new BaseException("dispatcher email does not match");
+        }
+        if (dispatcherMapper.deleteById(deleteDispatcherDTO.getDispatcherId()) == 0) {
+            throw new BaseException("delete dispatcher failed");
+        }
+    }
+
+    @Override
+    public NoParkingZoneListVO getNoParkingZoneList(NoParkingZoneListDTO listDTO) {
+        int page = resolvePage(listDTO.getPage());
+        int pageSize = resolvePageSize(listDTO.getPagesize());
+        int offset = (page - 1) * pageSize;
+
+        List<NoParkingArea> areas = noParkingAreaMapper.listForAdmin(offset, pageSize, listDTO.getKeyword());
+        Integer total = noParkingAreaMapper.countForAdmin(listDTO.getKeyword());
+        List<NoParkingZoneListVO.NoParkingZoneItem> items = new ArrayList<>();
+        if (areas != null) {
+            for (NoParkingArea area : areas) {
+                items.add(NoParkingZoneListVO.NoParkingZoneItem.builder()
+                        .id(area.getId())
+                        .name(area.getName())
+                        .polygon(area.getPolygon())
+                        .status(area.getStatus())
+                        .createTime(area.getCreateTime())
+                        .build());
+            }
+        }
+
+        return NoParkingZoneListVO.builder()
+                .areaList(items)
+                .page(page)
+                .pagesize(pageSize)
+                .total(total != null ? total : 0)
+                .vehicleCount(countScootersInNoParkingAreas(areas))
+                .build();
+    }
+
+    @Override
+    public NoParkingZoneVO addNoParkingZone(AddNoParkingZoneDTO addDTO) {
+        if (addDTO.getName() == null || addDTO.getName().isEmpty()) {
+            throw new BaseException("name is required");
+        }
+        NoParkingArea area = new NoParkingArea();
+        area.setName(addDTO.getName());
+        area.setPolygon(addDTO.getPolygon());
+        area.setStatus(addDTO.getStatus() != null ? addDTO.getStatus() : 1);
+        area.setCreateTime(LocalDateTime.now());
+        if (noParkingAreaMapper.insert(area) == 0) {
+            throw new BaseException("add no parking zone failed");
+        }
+        return buildNoParkingZoneVO(area, countPolygonPoints(area.getPolygon()), currentAdminName());
+    }
+
+    @Override
+    public NoParkingZoneVO editNoParkingZone(EditNoParkingZoneDTO editDTO) {
+        if (editDTO.getId() == null) {
+            throw new BaseException("id is required");
+        }
+        NoParkingArea existing = noParkingAreaMapper.getById(editDTO.getId());
+        if (existing == null) {
+            throw new BaseException("no parking zone not found");
+        }
+        NoParkingArea update = new NoParkingArea();
+        update.setId(editDTO.getId());
+        update.setName(editDTO.getName());
+        update.setPolygon(editDTO.getPolygon());
+        update.setStatus(editDTO.getStatus());
+        if (noParkingAreaMapper.update(update) == 0) {
+            throw new BaseException("edit no parking zone failed");
+        }
+        NoParkingArea updated = noParkingAreaMapper.getById(editDTO.getId());
+        return buildNoParkingZoneVO(updated, countPolygonPoints(updated.getPolygon()), null);
+    }
+
+    @Override
+    public void deleteNoParkingZone(DeleteNoParkingZoneDTO deleteDTO) {
+        if (deleteDTO.getId() == null) {
+            throw new BaseException("id is required");
+        }
+        NoParkingArea existing = noParkingAreaMapper.getById(deleteDTO.getId());
+        if (existing == null) {
+            throw new BaseException("no parking zone not found");
+        }
+        if (deleteDTO.getName() != null && !deleteDTO.getName().isEmpty()
+                && !deleteDTO.getName().equals(existing.getName())) {
+            throw new BaseException("no parking zone name does not match");
+        }
+        if (noParkingAreaMapper.deleteById(deleteDTO.getId()) == 0) {
+            throw new BaseException("delete no parking zone failed");
+        }
+    }
+
+    @Override
+    public ParkingPointListVO getParkingPointList(ParkingPointListDTO listDTO) {
+        int page = resolvePage(listDTO.getPage());
+        int pageSize = resolvePageSize(listDTO.getPagesize());
+        int offset = (page - 1) * pageSize;
+
+        List<ParkingPoint> points = parkingPointMapper.listForAdmin(offset, pageSize, listDTO.getKeyword());
+        Integer total = parkingPointMapper.countForAdmin(listDTO.getKeyword());
+        List<ParkingPointListVO.ParkingPointItem> items = new ArrayList<>();
+        if (points != null) {
+            for (ParkingPoint point : points) {
+                items.add(ParkingPointListVO.ParkingPointItem.builder()
+                        .id(point.getId())
+                        .name(point.getName())
+                        .latitude(point.getLatitude())
+                        .longitude(point.getLongitude())
+                        .status(point.getStatus())
+                        .createTime(point.getCreateTime())
+                        .build());
+            }
+        }
+        return ParkingPointListVO.builder()
+                .areaList(items)
+                .page(page)
+                .pagesize(pageSize)
+                .total(total != null ? total : 0)
+                .build();
+    }
+
+    @Override
+    public ParkingPointVO addParkingPoint(AddParkingPointDTO addDTO) {
+        if (addDTO.getName() == null || addDTO.getName().isEmpty()) {
+            throw new BaseException("name is required");
+        }
+        if (addDTO.getLatitude() == null || addDTO.getLongitude() == null) {
+            throw new BaseException("latitude and longitude are required");
+        }
+        ParkingPoint point = new ParkingPoint();
+        point.setName(addDTO.getName());
+        point.setLatitude(addDTO.getLatitude());
+        point.setLongitude(addDTO.getLongitude());
+        point.setStatus(addDTO.getStatus() != null ? addDTO.getStatus() : 1);
+        point.setCreateTime(LocalDateTime.now());
+        if (parkingPointMapper.insert(point) == 0) {
+            throw new BaseException("add parking point failed");
+        }
+        return buildParkingPointVO(point);
+    }
+
+    @Override
+    public ParkingPointVO editParkingPoint(EditParkingPointDTO editDTO) {
+        if (editDTO.getId() == null) {
+            throw new BaseException("id is required");
+        }
+        ParkingPoint existing = parkingPointMapper.getById(editDTO.getId());
+        if (existing == null) {
+            throw new BaseException("parking point not found");
+        }
+        ParkingPoint update = new ParkingPoint();
+        update.setId(editDTO.getId());
+        update.setName(editDTO.getName());
+        update.setLatitude(editDTO.getLatitude());
+        update.setLongitude(editDTO.getLongitude());
+        update.setStatus(editDTO.getStatus());
+        if (parkingPointMapper.update(update) == 0) {
+            throw new BaseException("edit parking point failed");
+        }
+        return buildParkingPointVO(parkingPointMapper.getById(editDTO.getId()));
+    }
+
+    @Override
+    public void deleteParkingPoint(DeleteParkingPointDTO deleteDTO) {
+        if (deleteDTO.getId() == null) {
+            throw new BaseException("id is required");
+        }
+        ParkingPoint existing = parkingPointMapper.getById(deleteDTO.getId());
+        if (existing == null) {
+            throw new BaseException("parking point not found");
+        }
+        if (deleteDTO.getName() != null && !deleteDTO.getName().isEmpty()
+                && !deleteDTO.getName().equals(existing.getName())) {
+            throw new BaseException("parking point name does not match");
+        }
+        if (parkingPointMapper.deleteById(deleteDTO.getId()) == 0) {
+            throw new BaseException("delete parking point failed");
+        }
+    }
+
+    @Override
+    public AdminScooterListVO getScooterList(Integer areaId) {
+        List<Scooter> scooters;
+        if (areaId == null) {
+            scooters = scooterMapper.listAll();
+        } else {
+            List<Long> scooterIds = resolveAreaScooterIds(areaId);
+            scooters = new ArrayList<>();
+            if (scooterIds != null && !scooterIds.isEmpty()) {
+                Map<Long, Scooter> scooterById = new HashMap<>();
+                for (Scooter scooter : scooterMapper.listLocated()) {
+                    scooterById.put(scooter.getId(), scooter);
+                }
+                for (Long scooterId : scooterIds) {
+                    Scooter scooter = scooterById.get(scooterId);
+                    if (scooter != null) {
+                        scooters.add(scooter);
+                    }
+                }
+            }
+        }
+
+        List<AdminScooterListVO.ScooterItem> items = new ArrayList<>();
+        if (scooters != null) {
+            for (Scooter scooter : scooters) {
+                items.add(AdminScooterListVO.ScooterItem.builder()
+                        .id(scooter.getId())
+                        .code(scooter.getCode())
+                        .rideStatus(scooter.getRideStatus())
+                        .faultStatus(scooter.getFaultStatus())
+                        .battery(scooter.getBattery())
+                        .latitude(scooter.getLatitude())
+                        .longitude(scooter.getLongitude())
+                        .createTime(scooter.getCreateTime())
+                        .build());
+            }
+        }
+        return AdminScooterListVO.builder()
+                .areaList(items)
+                .areaId(areaId)
+                .scooterCount(String.valueOf(items.size()))
+                .build();
+    }
+
+    private int resolvePage(Integer page) {
+        return page != null && page > 0 ? page : 1;
+    }
+
+    private int resolvePageSize(Integer pageSize) {
+        return pageSize != null && pageSize > 0 ? pageSize : 10;
+    }
+
+    private Integer countScootersInNoParkingAreas(List<NoParkingArea> areas) {
+        if (areas == null || areas.isEmpty()) {
+            return 0;
+        }
+        List<Scooter> scooters = scooterMapper.listLocated();
+        Set<Long> scooterIds = new HashSet<>();
+        for (NoParkingArea area : areas) {
+            try {
+                List<List<Double>> polygon = parsePolygon(area.getPolygon());
+                if (polygon.size() >= 3) {
+                    scooterIds.addAll(findScootersInPolygon(scooters, polygon));
+                }
+            } catch (BaseException ignored) {
+            }
+        }
+        return scooterIds.size();
+    }
+
+    private NoParkingZoneVO buildNoParkingZoneVO(NoParkingArea area, Integer polygonPointCount, String createdBy) {
+        return NoParkingZoneVO.builder()
+                .id(area.getId())
+                .name(area.getName())
+                .polygon(area.getPolygon())
+                .status(area.getStatus())
+                .createTime(area.getCreateTime())
+                .polygonPointCount(polygonPointCount)
+                .createdBy(createdBy)
+                .build();
+    }
+
+    private ParkingPointVO buildParkingPointVO(ParkingPoint point) {
+        return ParkingPointVO.builder()
+                .id(point.getId())
+                .name(point.getName())
+                .latitude(point.getLatitude())
+                .longitude(point.getLongitude())
+                .status(point.getStatus())
+                .createTime(point.getCreateTime())
+                .build();
+    }
+
+    private String currentAdminName() {
+        Long adminId = BaseContext.getCurrentId();
+        return adminId != null ? adminId.toString() : "admin";
     }
 
     private String encrypt(String value) {

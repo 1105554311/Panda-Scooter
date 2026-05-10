@@ -11,4 +11,57 @@
         order by id desc
     </select>
 
+    <select id="listForAdmin" resultType="com.panda.entity.NoParkingArea">
+        select id, name, polygon, status, create_time
+        from no_parking_area
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and name like concat('%', #{keyword}, '%')
+            </if>
+        </where>
+        order by id desc
+        limit #{offset}, #{pageSize}
+    </select>
+
+    <select id="countForAdmin" resultType="java.lang.Integer">
+        select count(*)
+        from no_parking_area
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and name like concat('%', #{keyword}, '%')
+            </if>
+        </where>
+    </select>
+
+    <select id="getById" resultType="com.panda.entity.NoParkingArea">
+        select id, name, polygon, status, create_time
+        from no_parking_area
+        where id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into no_parking_area (name, polygon, status, create_time)
+        values (#{name}, #{polygon}, #{status}, #{createTime})
+    </insert>
+
+    <update id="update">
+        update no_parking_area
+        <set>
+            <if test="name != null and name != ''">
+                name = #{name},
+            </if>
+            <if test="polygon != null">
+                polygon = #{polygon},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        delete from no_parking_area where id = #{id}
+    </delete>
+
 </mapper>

@@ -26,6 +26,9 @@ public interface DispatcherMapper {
     @Select("SELECT id, name, email, area_id FROM dispatcher WHERE area_id = #{areaId} LIMIT 1")
     Dispatcher getByAreaId(@Param("areaId") Long areaId);
 
+    @Select("SELECT id, name, email, area_id FROM dispatcher WHERE area_id = #{areaId} ORDER BY id DESC")
+    List<Dispatcher> listByAreaId(@Param("areaId") Long areaId);
+
     /**
      * 分页查询调度员列表
      */

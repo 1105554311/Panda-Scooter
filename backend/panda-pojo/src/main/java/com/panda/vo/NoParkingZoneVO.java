@@ -2,22 +2,17 @@ package com.panda.vo;
 
 import lombok.Builder;
 import lombok.Data;
-import java.util.List;
+
+import java.time.LocalDateTime;
 
 @Data
 @Builder
-public class AddZoneVO {
+public class NoParkingZoneVO {
     private Long id;
     private String name;
     private String polygon;
-    private List<DispatcherInfo> dispatchers;
+    private Integer status;
+    private LocalDateTime createTime;
     private Integer polygonPointCount;
     private String createdBy;
-
-    @Data
-    @Builder
-    public static class DispatcherInfo {
-        private Long id;
-        private String name;
-    }
 }

@@ -2,31 +2,27 @@ package com.panda.vo;
 
 import lombok.Builder;
 import lombok.Data;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
 @Builder
-public class ZoneListVO {
-    private List<ZoneItem> areaList;
+public class ParkingPointListVO {
+    private List<ParkingPointItem> areaList;
     private Integer page;
     private Integer pagesize;
     private Integer total;
 
     @Data
     @Builder
-    public static class ZoneItem {
+    public static class ParkingPointItem {
         private Long id;
         private String name;
-        private String polygon;
+        private BigDecimal latitude;
+        private BigDecimal longitude;
+        private Integer status;
         private LocalDateTime createTime;
-        private List<DispatcherInfo> dispatchers;
-    }
-
-    @Data
-    @Builder
-    public static class DispatcherInfo {
-        private Long id;
-        private String name;
     }
 }

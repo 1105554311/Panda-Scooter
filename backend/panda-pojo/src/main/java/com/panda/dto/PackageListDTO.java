@@ -5,6 +5,6 @@ import lombok.Data;
 @Data
 public class PackageListDTO {
     private Integer page;
-    private Integer pageSize;
+    private Integer pagesize;
     private String keyword;
 }

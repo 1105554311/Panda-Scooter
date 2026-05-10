@@ -17,6 +17,7 @@ import com.panda.mapper.DispatcherMapper;
 import com.panda.mapper.NoParkingAreaMapper;
 import com.panda.mapper.ParkingPointMapper;
 import com.panda.mapper.ScooterMapper;
+import com.panda.mqtt.ScooterOnlineService;
 import com.panda.properties.JwtProperties;
 import com.panda.service.DispatcherService;
 import com.panda.utils.JwtUtil;
@@ -59,6 +60,7 @@ public class DispatcherServiceImpl implements DispatcherService {
     private final JwtProperties jwtProperties;
     private final JavaMailSender javaMailSender;
     private final StringRedisTemplate stringRedisTemplate;
+    private final ScooterOnlineService scooterOnlineService;
 
     @Override
     @Transactional
@@ -193,6 +195,7 @@ public class DispatcherServiceImpl implements DispatcherService {
                     scooter.put("battery", item.getBattery());
                     scooter.put("latitude", item.getLatitude());
                     scooter.put("longitude", item.getLongitude());
+                    scooter.put("online", scooterOnlineService.isOnline(item.getCode()));
                     return scooter;
                 }).toList());
         data.put("noParkingAreas", noParkingAreaMapper.listEnabled().stream()

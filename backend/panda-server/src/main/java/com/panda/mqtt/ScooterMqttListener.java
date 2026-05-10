@@ -2,7 +2,9 @@ package com.panda.mqtt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.panda.entity.Scooter;
+import com.panda.mapper.ScooterCommandMapper;
 import com.panda.mapper.ScooterMapper;
+import com.panda.mqtt.dto.ScooterCommandAckMessage;
 import com.panda.mqtt.dto.ScooterTelemetryMessage;
 import com.panda.properties.MqttProperties;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 
 @Slf4j
 @Component
@@ -29,6 +32,8 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
     private final MqttProperties mqttProperties;
     private final ObjectMapper objectMapper;
     private final ScooterMapper scooterMapper;
+    private final ScooterCommandMapper scooterCommandMapper;
+    private final ScooterOnlineService scooterOnlineService;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -40,7 +45,7 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
         try {
             mqttClient.setCallback(this);
             mqttClient.connect(mqttConnectOptions);
-            subscribeTelemetryTopic();
+            subscribeTopics();
         } catch (Exception ex) {
             log.warn("Failed to connect MQTT broker, serverUri={}", mqttProperties.getServerUri(), ex);
         }
@@ -50,7 +55,7 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
     public void connectComplete(boolean reconnect, String serverURI) {
         log.info("MQTT connected, reconnect={}, serverURI={}", reconnect, serverURI);
         if (reconnect) {
-            subscribeTelemetryTopic();
+            subscribeTopics();
         }
     }
 
@@ -63,31 +68,15 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
     public void messageArrived(String topic, MqttMessage message) {
         String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
         try {
-            ScooterTelemetryMessage telemetry = objectMapper.readValue(payload, ScooterTelemetryMessage.class);
-            String scooterCode = resolveScooterCode(topic, telemetry);
-            if (scooterCode == null || scooterCode.isBlank()) {
-                log.warn("Ignore scooter telemetry because code is empty, topic={}, payload={}", topic, payload);
-                return;
+            if (isAckTopic(topic)) {
+                handleCommandAck(topic, payload);
+            } else if (isTelemetryTopic(topic)) {
+                handleTelemetry(topic, payload);
+            } else {
+                log.warn("Ignore unknown MQTT message, topic={}, payload={}", topic, payload);
             }
-
-            Scooter scooter = scooterMapper.getByCode(scooterCode);
-            if (scooter == null) {
-                log.warn("Ignore scooter telemetry because scooter does not exist, code={}, payload={}", scooterCode, payload);
-                return;
-            }
-
-            scooterMapper.updateStatusAndLocation(
-                    scooter.getId(),
-                    resolveRideStatus(telemetry, scooter),
-                    resolveFaultStatus(telemetry, scooter),
-                    resolveBattery(telemetry, scooter),
-                    resolveLatitude(telemetry, scooter),
-                    resolveLongitude(telemetry, scooter)
-            );
-            log.info("Updated scooter telemetry, code={}, orderId={}, latitude={}, longitude={}, battery={}",
-                    scooterCode, telemetry.getOrderId(), telemetry.getLatitude(), telemetry.getLongitude(), telemetry.getBattery());
         } catch (Exception ex) {
-            log.warn("Failed to handle scooter telemetry, topic={}, payload={}", topic, payload, ex);
+            log.warn("Failed to handle MQTT message, topic={}, payload={}", topic, payload, ex);
         }
     }
 
@@ -96,15 +85,85 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
         // Server command publishing is logged by ScooterMqttPublisher.
     }
 
-    private void subscribeTelemetryTopic() {
+    private void subscribeTopics() {
+        subscribeTopic(mqttProperties.getTelemetryTopic(), "telemetry");
+        subscribeTopic(mqttProperties.getAckTopic(), "ack");
+    }
+
+    private void subscribeTopic(String topic, String topicName) {
         try {
             if (mqttClient.isConnected()) {
-                mqttClient.subscribe(mqttProperties.getTelemetryTopic(), mqttProperties.getQos());
-                log.info("Subscribed MQTT telemetry topic, topic={}", mqttProperties.getTelemetryTopic());
+                mqttClient.subscribe(topic, mqttProperties.getQos());
+                log.info("Subscribed MQTT {} topic, topic={}", topicName, topic);
             }
         } catch (Exception ex) {
-            log.warn("Failed to subscribe MQTT telemetry topic, topic={}", mqttProperties.getTelemetryTopic(), ex);
+            log.warn("Failed to subscribe MQTT {} topic, topic={}", topicName, topic, ex);
         }
+    }
+
+    private void handleTelemetry(String topic, String payload) throws Exception {
+        ScooterTelemetryMessage telemetry = objectMapper.readValue(payload, ScooterTelemetryMessage.class);
+        String scooterCode = resolveScooterCode(topic, telemetry);
+        if (scooterCode == null || scooterCode.isBlank()) {
+            log.warn("Ignore scooter telemetry because code is empty, topic={}, payload={}", topic, payload);
+            return;
+        }
+
+        Scooter scooter = scooterMapper.getByCode(scooterCode);
+        if (scooter == null) {
+            log.warn("Ignore scooter telemetry because scooter does not exist, code={}, payload={}", scooterCode, payload);
+            return;
+        }
+
+        scooterOnlineService.refreshOnline(scooterCode);
+        scooterMapper.updateStatusAndLocation(
+                scooter.getId(),
+                resolveRideStatus(telemetry, scooter),
+                resolveFaultStatus(telemetry, scooter),
+                resolveBattery(telemetry, scooter),
+                resolveLatitude(telemetry, scooter),
+                resolveLongitude(telemetry, scooter)
+        );
+        log.info("Updated scooter telemetry, code={}, orderId={}, latitude={}, longitude={}, battery={}",
+                scooterCode, telemetry.getOrderId(), telemetry.getLatitude(), telemetry.getLongitude(), telemetry.getBattery());
+    }
+
+    private void handleCommandAck(String topic, String payload) throws Exception {
+        ScooterCommandAckMessage ackMessage = objectMapper.readValue(payload, ScooterCommandAckMessage.class);
+        if (ackMessage.getCommandId() == null || ackMessage.getCommandId().isBlank()) {
+            log.warn("Ignore scooter command ack because commandId is empty, topic={}, payload={}", topic, payload);
+            return;
+        }
+
+        LocalDateTime ackTime = LocalDateTime.now();
+        boolean success = Boolean.TRUE.equals(ackMessage.getSuccess());
+        int affectedRows = success
+                ? scooterCommandMapper.markAcked(ackMessage.getCommandId(), ackTime)
+                : scooterCommandMapper.markAckFailed(ackMessage.getCommandId(), ackTime, truncate(ackMessage.getMessage()));
+
+        if (affectedRows == 0) {
+            log.warn("Ignore scooter command ack because command is not found or already finished, commandId={}, topic={}, success={}",
+                    ackMessage.getCommandId(), topic, success);
+            return;
+        }
+        log.info("Handled scooter command ack, commandId={}, command={}, orderId={}, success={}, message={}",
+                ackMessage.getCommandId(), ackMessage.getCommand(), ackMessage.getOrderId(), success, ackMessage.getMessage());
+    }
+
+    private boolean isTelemetryTopic(String topic) {
+        return hasTopicSuffix(topic, "telemetry");
+    }
+
+    private boolean isAckTopic(String topic) {
+        return hasTopicSuffix(topic, "ack");
+    }
+
+    private boolean hasTopicSuffix(String topic, String suffix) {
+        String[] segments = topic.split("/");
+        return segments.length >= 4
+                && "panda".equals(segments[0])
+                && "scooter".equals(segments[1])
+                && suffix.equals(segments[3]);
     }
 
     private String resolveScooterCode(String topic, ScooterTelemetryMessage telemetry) {
@@ -119,6 +178,13 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
             return segments[2];
         }
         return null;
+    }
+
+    private String truncate(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= 512 ? value : value.substring(0, 512);
     }
 
     private Integer resolveRideStatus(ScooterTelemetryMessage telemetry, Scooter scooter) {

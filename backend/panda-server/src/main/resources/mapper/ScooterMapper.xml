@@ -35,6 +35,12 @@
           and latitude is not null
     </select>
 
+    <select id="listAll" resultType="com.panda.entity.Scooter">
+        select id, code, battery, latitude, longitude, ride_status, fault_status, create_time
+        from scooter
+        order by id desc
+    </select>
+
     <select id="countByStatus" resultType="java.lang.Integer">
         select count(*)
         from scooter
