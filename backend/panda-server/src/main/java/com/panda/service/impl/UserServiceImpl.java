@@ -1,5 +1,6 @@
 package com.panda.service.impl;
 
+import cn.dev33.satoken.stp.StpLogic;
 import com.panda.context.BaseContext;
 import com.panda.dto.UserBillOperateDTO;
 import com.panda.dto.UserDeleteDTO;
@@ -24,10 +25,8 @@ import com.panda.mapper.UserBillMapper;
 import com.panda.mapper.UserMapper;
 import com.panda.mapper.UserSubscriptionMapper;
 import com.panda.mapper.UserWalletMapper;
-import com.panda.properties.JwtProperties;
 import com.panda.properties.MinioProperties;
 import com.panda.service.UserService;
-import com.panda.utils.JwtUtil;
 import com.panda.vo.UserBillVO;
 import com.panda.vo.UserFaultVO;
 import com.panda.vo.UserLoginVO;
@@ -38,19 +37,19 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.DigestUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -78,11 +77,13 @@ public class UserServiceImpl implements UserService {
     private final PackageOrderMapper packageOrderMapper;
     private final UserSubscriptionMapper userSubscriptionMapper;
     private final RentalOrderMapper rentalOrderMapper;
-    private final JwtProperties jwtProperties;
     private final MinioProperties minioProperties;
     private final MinioClient minioClient;
     private final JavaMailSender javaMailSender;
     private final StringRedisTemplate stringRedisTemplate;
+    @Qualifier("userStpLogic")
+    private final StpLogic userStpLogic;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional
@@ -96,7 +97,7 @@ public class UserServiceImpl implements UserService {
         User user = new User();
         user.setUsername(buildUsername(userRegisterDTO.getEmail()));
         user.setEmail(userRegisterDTO.getEmail());
-        user.setPassword(encrypt(userRegisterDTO.getPassword()));
+        user.setPassword(passwordEncoder.encode(userRegisterDTO.getPassword()));
         user.setCreateTime(LocalDateTime.now());
         userMapper.insert(user);
 
@@ -114,13 +115,12 @@ public class UserServiceImpl implements UserService {
         if (user == null) {
             throw new BaseException("用户不存在");
         }
-        if (!user.getPassword().equals(encrypt(userLoginDTO.getPassword()))) {
+        if (!passwordEncoder.matches(userLoginDTO.getPassword(), user.getPassword())) {
             throw new BaseException("密码错误");
         }
 
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", user.getId());
-        String token = JwtUtil.createJWT(jwtProperties.getSecretKey(), jwtProperties.getTtl(), claims);
+        userStpLogic.login(user.getId());
+        String token = userStpLogic.getTokenValue();
 
         return UserLoginVO.builder()
                 .id(user.getId())
@@ -132,6 +132,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void logout() {
+        userStpLogic.logout();
         log.info("user logout, userId={}", BaseContext.getCurrentId());
     }
 
@@ -144,7 +145,7 @@ public class UserServiceImpl implements UserService {
             throw new BaseException("用户不存在");
         }
         validateVerificationCode(user.getEmail(), userDeleteDTO.getVerificationCode());
-        if (!user.getPassword().equals(encrypt(userDeleteDTO.getPassword()))) {
+        if (!passwordEncoder.matches(userDeleteDTO.getPassword(), user.getPassword())) {
             throw new BaseException("密码错误");
         }
         userMapper.deleteById(userId);
@@ -175,7 +176,7 @@ public class UserServiceImpl implements UserService {
             throw new BaseException("用户不存在");
         }
         validateVerificationCode(user.getEmail(), userResetPasswordDTO.getVerificationCode());
-        userMapper.updatePasswordById(userId, encrypt(userResetPasswordDTO.getNewPassword()));
+        userMapper.updatePasswordById(userId, passwordEncoder.encode(userResetPasswordDTO.getNewPassword()));
         clearVerificationCode(user.getEmail());
     }
 
@@ -445,10 +446,6 @@ public class UserServiceImpl implements UserService {
     private String buildVerificationCode() {
         int code = (int) ((Math.random() * 9 + 1) * 100000);
         return String.valueOf(code);
-    }
-
-    private String encrypt(String value) {
-        return DigestUtils.md5DigestAsHex(value.getBytes(StandardCharsets.UTF_8));
     }
 
     private String resolveImageUrl(MultipartFile image) {

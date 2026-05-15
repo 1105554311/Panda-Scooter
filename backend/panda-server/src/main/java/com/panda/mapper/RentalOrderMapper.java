@@ -24,6 +24,10 @@ public interface RentalOrderMapper {
 
     int updateFinishInfo(RentalOrder rentalOrder);
 
+    int cancelRidingOrder(@Param("id") Long id,
+                          @Param("endTime") java.time.LocalDateTime endTime,
+                          @Param("orderStatus") Integer orderStatus);
+
     List<RentalOrder> listByUserId(@Param("userId") Long userId);
 
     Long sumTotalTimeByUserId(@Param("userId") Long userId);

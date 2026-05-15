@@ -34,6 +34,7 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
     private final ScooterMapper scooterMapper;
     private final ScooterCommandMapper scooterCommandMapper;
     private final ScooterOnlineService scooterOnlineService;
+    private final ScooterCommandBizService scooterCommandBizService;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -137,6 +138,7 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
 
         LocalDateTime ackTime = LocalDateTime.now();
         boolean success = Boolean.TRUE.equals(ackMessage.getSuccess());
+        var scooterCommand = scooterCommandMapper.getByCommandId(ackMessage.getCommandId());
         int affectedRows = success
                 ? scooterCommandMapper.markAcked(ackMessage.getCommandId(), ackTime)
                 : scooterCommandMapper.markAckFailed(ackMessage.getCommandId(), ackTime, truncate(ackMessage.getMessage()));
@@ -145,6 +147,11 @@ public class ScooterMqttListener implements ApplicationRunner, MqttCallbackExten
             log.warn("Ignore scooter command ack because command is not found or already finished, commandId={}, topic={}, success={}",
                     ackMessage.getCommandId(), topic, success);
             return;
+        }
+        if (success) {
+            scooterCommandBizService.handleAckSuccess(scooterCommand);
+        } else {
+            scooterCommandBizService.handleCommandFailure(scooterCommand, ackMessage.getMessage());
         }
         log.info("Handled scooter command ack, commandId={}, command={}, orderId={}, success={}, message={}",
                 ackMessage.getCommandId(), ackMessage.getCommand(), ackMessage.getOrderId(), success, ackMessage.getMessage());

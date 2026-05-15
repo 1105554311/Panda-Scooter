@@ -1,5 +1,6 @@
 package com.panda.handler;
 
+import cn.dev33.satoken.exception.NotLoginException;
 import com.panda.exception.BaseException;
 import com.panda.result.Result;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -20,6 +21,11 @@ public class GlobalExceptionHandler {
                 ? "参数错误"
                 : e.getBindingResult().getFieldError().getDefaultMessage();
         return Result.error(message);
+    }
+
+    @ExceptionHandler(NotLoginException.class)
+    public Result<Void> handleNotLoginException(NotLoginException e) {
+        return Result.error("未登录或登录已过期");
     }
 
     @ExceptionHandler(Exception.class)

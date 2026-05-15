@@ -1,8 +1,8 @@
 package com.panda.config;
 
-import com.panda.interceptor.JwtTokenAdminInterceptor;
-import com.panda.interceptor.JwtTokenUserInterceptor;
-import com.panda.interceptor.JwtTokenDispatcherInterceptor;
+import com.panda.interceptor.SaTokenAdminInterceptor;
+import com.panda.interceptor.SaTokenDispatcherInterceptor;
+import com.panda.interceptor.SaTokenUserInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -13,9 +13,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @RequiredArgsConstructor
 public class WebMvcConfiguration implements WebMvcConfigurer {
 
-    private final JwtTokenUserInterceptor jwtTokenUserInterceptor;
-    private final JwtTokenDispatcherInterceptor jwtTokenDispatcherInterceptor;
-    private final JwtTokenAdminInterceptor jwtTokenAdminInterceptor;
+    private final SaTokenUserInterceptor saTokenUserInterceptor;
+    private final SaTokenDispatcherInterceptor saTokenDispatcherInterceptor;
+    private final SaTokenAdminInterceptor saTokenAdminInterceptor;
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
@@ -29,7 +29,7 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(jwtTokenUserInterceptor)
+        registry.addInterceptor(saTokenUserInterceptor)
                 .addPathPatterns("/user/**")
                 .excludePathPatterns(
                         "/user/user/signin",
@@ -41,7 +41,7 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
                         "/error"
                 );
 
-        registry.addInterceptor(jwtTokenDispatcherInterceptor)
+        registry.addInterceptor(saTokenDispatcherInterceptor)
                 .addPathPatterns("/dispatcher/**")
                 .excludePathPatterns(
                         "/dispatcher/user/signin",
@@ -53,7 +53,7 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
                         "/error"
                 );
 
-        registry.addInterceptor(jwtTokenAdminInterceptor)
+        registry.addInterceptor(saTokenAdminInterceptor)
                 .addPathPatterns("/admin/**")
                 .excludePathPatterns(
                         "/admin/log/login",

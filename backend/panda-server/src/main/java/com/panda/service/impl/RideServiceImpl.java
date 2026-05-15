@@ -79,6 +79,10 @@ public class RideServiceImpl implements RideService {
             log.warn("解锁失败，车辆正在调度中，code={}, scooterId={}", code, scooter.getId());
             throw new BaseException("车辆正在调度中");
         }
+        if (!scooterOnlineService.isOnline(scooter.getCode())) {
+            log.warn("Unlock scooter rejected because scooter is offline, code={}, scooterId={}", code, scooter.getId());
+            throw new BaseException("车辆离线，暂不可用");
+        }
         if (!Integer.valueOf(0).equals(scooter.getRideStatus())) {
             log.warn("解锁失败，车辆状态不可用，code={}, scooterId={}, rideStatus={}", code, scooter.getId(), scooter.getRideStatus());
             throw new BaseException("车辆当前不可解锁");

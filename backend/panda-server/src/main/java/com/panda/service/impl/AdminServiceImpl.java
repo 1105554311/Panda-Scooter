@@ -1,5 +1,6 @@
 package com.panda.service.impl;
 
+import cn.dev33.satoken.stp.StpLogic;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.panda.context.BaseContext;
@@ -7,17 +8,15 @@ import com.panda.dto.*;
 import com.panda.entity.*;
 import com.panda.exception.BaseException;
 import com.panda.mapper.*;
-import com.panda.properties.JwtProperties;
 import com.panda.service.AdminService;
 import com.panda.vo.*;
-import com.panda.utils.JwtUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.util.DigestUtils;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -33,9 +32,6 @@ public class AdminServiceImpl implements AdminService {
 
     @Autowired
     private AdminMapper adminMapper;
-
-    @Autowired
-    private JwtProperties jwtProperties;
 
     @Autowired
     private RentalOrderMapper rentalOrderMapper;
@@ -67,19 +63,25 @@ public class AdminServiceImpl implements AdminService {
     @Autowired
     private ParkingPointMapper parkingPointMapper;
 
+    @Autowired
+    @Qualifier("adminStpLogic")
+    private StpLogic adminStpLogic;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     @Override
     public AdminLoginVO login(AdminLoginDTO adminLoginDTO) {
         Admin admin = adminMapper.getByEmail(adminLoginDTO.getEmail());
         if (admin == null) {
             throw new BaseException("账号不存在");
         }
-        if (!admin.getPassword().equals(encrypt(adminLoginDTO.getPassword()))) {
+        if (!passwordEncoder.matches(adminLoginDTO.getPassword(), admin.getPassword())) {
             throw new BaseException("密码错误");
         }
 
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("adminId", admin.getId());
-        String token = JwtUtil.createJWT(jwtProperties.getSecretKey(), jwtProperties.getTtl(), claims);
+        adminStpLogic.login(admin.getId());
+        String token = adminStpLogic.getTokenValue();
 
         return AdminLoginVO.builder()
                 .id(admin.getId())
@@ -91,6 +93,7 @@ public class AdminServiceImpl implements AdminService {
 
     @Override
     public void logout() {
+        adminStpLogic.logout();
         Long adminId = BaseContext.getCurrentId();
         if (adminId == null) {
             throw new BaseException("未登录");
@@ -837,6 +840,7 @@ public class AdminServiceImpl implements AdminService {
         dispatcher.setName(addDispatcherDTO.getName());
         dispatcher.setPassword(encrypt(addDispatcherDTO.getPassword()));  // 密码加密
         dispatcher.setEmail(addDispatcherDTO.getEmail());
+        dispatcher.setPassword(passwordEncoder.encode(addDispatcherDTO.getPassword()));
         dispatcher.setAreaId(addDispatcherDTO.getAreaId());
         dispatcher.setStatus(1);  // 默认启用
         dispatcher.setCreateTime(LocalDateTime.now());
@@ -890,6 +894,9 @@ public class AdminServiceImpl implements AdminService {
         }
         if (editDispatcherDTO.getPassword() != null && !editDispatcherDTO.getPassword().isEmpty()) {
             updateDispatcher.setPassword(encrypt(editDispatcherDTO.getPassword())); // 密码加密
+        }
+        if (editDispatcherDTO.getPassword() != null && !editDispatcherDTO.getPassword().isEmpty()) {
+            updateDispatcher.setPassword(passwordEncoder.encode(editDispatcherDTO.getPassword()));
         }
         if (editDispatcherDTO.getEmail() != null && !editDispatcherDTO.getEmail().isEmpty()) {
             updateDispatcher.setEmail(editDispatcherDTO.getEmail());
@@ -1224,6 +1231,6 @@ public class AdminServiceImpl implements AdminService {
     }
 
     private String encrypt(String value) {
-        return DigestUtils.md5DigestAsHex(value.getBytes(StandardCharsets.UTF_8));
+        return passwordEncoder.encode(value);
     }
 }

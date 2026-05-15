@@ -17,6 +17,18 @@ springdoc:
   api-docs:
     path: /v3/api-docs
 
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: 604800
+  active-timeout: 1800
+  is-concurrent: false
+  is-share: false
+  is-read-header: true
+  is-read-cookie: false
+  is-read-body: false
+  is-log: true
+
 server:
   port: 8080
 
@@ -24,13 +36,9 @@ panda:
   amap:
     key: 41c02ed4a74387d6fe95299cb7adb8f4
     secret: b1a8779ea28e6241db16882c059e9233
-  jwt:
-    secret-key: 12345678901234567890123456789012
-    ttl: 604800000
-    token-name: Authorization
   mqtt:
-    enabled: ${PANDA_MQTT_ENABLED:false}
-    server-uri: ${PANDA_MQTT_SERVER_URI:tcp://8.137.181.89:1883}
+    enabled: ${PANDA_MQTT_ENABLED:true}
+    server-uri: ${PANDA_MQTT_SERVER_URI:tcp://172.20.10.2:1883}
     client-id: ${PANDA_MQTT_CLIENT_ID:panda-server}
     username: ${PANDA_MQTT_USERNAME:}
     password: ${PANDA_MQTT_PASSWORD:}

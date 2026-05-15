@@ -66,6 +66,18 @@
         where id = #{id}
     </update>
 
+    <update id="cancelRidingOrder">
+        update rental_order
+        set end_time = #{endTime},
+            total_time = 0,
+            order_status = #{orderStatus},
+            pay_status = 0,
+            amount = 0.00,
+            total_kilometer = 0.00
+        where id = #{id}
+          and order_status = 0
+    </update>
+
     <select id="listByUserId" resultMap="rentalOrderResultMap">
         select id, user_id, scooter_id, start_time, end_time, total_time, order_status, pay_status, amount, total_kilometer, create_time
         from rental_order

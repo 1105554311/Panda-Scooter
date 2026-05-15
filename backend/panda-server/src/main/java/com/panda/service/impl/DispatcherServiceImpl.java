@@ -1,5 +1,6 @@
 package com.panda.service.impl;
 
+import cn.dev33.satoken.stp.StpLogic;
 import com.panda.context.BaseContext;
 import com.panda.dto.DispatcherDeleteDTO;
 import com.panda.dto.DispatcherLockScooterDTO;
@@ -18,24 +19,22 @@ import com.panda.mapper.NoParkingAreaMapper;
 import com.panda.mapper.ParkingPointMapper;
 import com.panda.mapper.ScooterMapper;
 import com.panda.mqtt.ScooterOnlineService;
-import com.panda.properties.JwtProperties;
 import com.panda.service.DispatcherService;
-import com.panda.utils.JwtUtil;
 import com.panda.vo.DispatchHistoryVO;
 import com.panda.vo.DispatcherLoginVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.DigestUtils;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -57,10 +56,12 @@ public class DispatcherServiceImpl implements DispatcherService {
     private final AreaMapper areaMapper;
     private final NoParkingAreaMapper noParkingAreaMapper;
     private final ParkingPointMapper parkingPointMapper;
-    private final JwtProperties jwtProperties;
     private final JavaMailSender javaMailSender;
     private final StringRedisTemplate stringRedisTemplate;
     private final ScooterOnlineService scooterOnlineService;
+    @Qualifier("dispatcherStpLogic")
+    private final StpLogic dispatcherStpLogic;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional
@@ -74,7 +75,7 @@ public class DispatcherServiceImpl implements DispatcherService {
         Dispatcher dispatcher = new Dispatcher();
         dispatcher.setName(dispatcherRegisterDTO.getName().trim());
         dispatcher.setEmail(dispatcherRegisterDTO.getEmail());
-        dispatcher.setPassword(encrypt(dispatcherRegisterDTO.getPassword()));
+        dispatcher.setPassword(passwordEncoder.encode(dispatcherRegisterDTO.getPassword()));
         dispatcher.setStatus(0);
         dispatcher.setCreateTime(LocalDateTime.now());
         dispatcherMapper.insert(dispatcher);
@@ -87,13 +88,12 @@ public class DispatcherServiceImpl implements DispatcherService {
         if (dispatcher == null) {
             throw new BaseException("调度员不存在");
         }
-        if (!dispatcher.getPassword().equals(encrypt(dispatcherLoginDTO.getPassword()))) {
+        if (!passwordEncoder.matches(dispatcherLoginDTO.getPassword(), dispatcher.getPassword())) {
             throw new BaseException("密码错误");
         }
 
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("dispatcherId", dispatcher.getId());
-        String token = JwtUtil.createJWT(jwtProperties.getSecretKey(), jwtProperties.getTtl(), claims);
+        dispatcherStpLogic.login(dispatcher.getId());
+        String token = dispatcherStpLogic.getTokenValue();
         return DispatcherLoginVO.builder()
                 .id(dispatcher.getId())
                 .name(dispatcher.getName())
@@ -104,6 +104,7 @@ public class DispatcherServiceImpl implements DispatcherService {
 
     @Override
     public void logout() {
+        dispatcherStpLogic.logout();
         log.info("dispatcher logout, dispatcherId={}", BaseContext.getCurrentId());
     }
 
@@ -116,7 +117,7 @@ public class DispatcherServiceImpl implements DispatcherService {
             throw new BaseException("调度员不存在");
         }
         validateVerificationCode(dispatcher.getEmail(), dispatcherDeleteDTO.getVerificationCode());
-        if (!dispatcher.getPassword().equals(encrypt(dispatcherDeleteDTO.getPassword()))) {
+        if (!passwordEncoder.matches(dispatcherDeleteDTO.getPassword(), dispatcher.getPassword())) {
             throw new BaseException("密码错误");
         }
         dispatcherMapper.deleteById(dispatcherId);
@@ -147,7 +148,7 @@ public class DispatcherServiceImpl implements DispatcherService {
             throw new BaseException("调度员不存在");
         }
         validateVerificationCode(dispatcher.getEmail(), dispatcherResetPasswordDTO.getVerificationCode());
-        dispatcherMapper.updatePasswordById(dispatcherId, encrypt(dispatcherResetPasswordDTO.getNewPassword()));
+        dispatcherMapper.updatePasswordById(dispatcherId, passwordEncoder.encode(dispatcherResetPasswordDTO.getNewPassword()));
         clearVerificationCode(dispatcher.getEmail());
     }
 
@@ -326,10 +327,6 @@ public class DispatcherServiceImpl implements DispatcherService {
     private String buildVerificationCode() {
         int code = (int) ((Math.random() * 9 + 1) * 100000);
         return String.valueOf(code);
-    }
-
-    private String encrypt(String value) {
-        return DigestUtils.md5DigestAsHex(value.getBytes(StandardCharsets.UTF_8));
     }
 
     private int resolveRadiusByScale(int scale) {

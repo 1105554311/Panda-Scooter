@@ -25,7 +25,12 @@ public interface ScooterCommandMapper {
                       @Param("ackTime") LocalDateTime ackTime,
                       @Param("errorMessage") String errorMessage);
 
+    ScooterCommand getByCommandId(@Param("commandId") String commandId);
+
     List<ScooterCommand> listRetryableTimeoutCommands(@Param("deadline") LocalDateTime deadline,
+                                                      @Param("limit") Integer limit);
+
+    List<ScooterCommand> listExhaustedTimeoutCommands(@Param("deadline") LocalDateTime deadline,
                                                       @Param("limit") Integer limit);
 
     int markRetrySent(@Param("commandId") String commandId,
@@ -36,4 +41,7 @@ public interface ScooterCommandMapper {
 
     int markTimeoutCommands(@Param("deadline") LocalDateTime deadline,
                             @Param("errorMessage") String errorMessage);
+
+    int markTimeoutByCommandId(@Param("commandId") String commandId,
+                               @Param("errorMessage") String errorMessage);
 }
