@@ -1,15 +1,14 @@
 package com.panda.controller.user;
 
 import com.panda.test.base.BaseTest;
-import com.panda.utils.JwtUtil;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -19,10 +18,10 @@ import static org.hamcrest.Matchers.notNullValue;
 
 class RideControllerTest extends BaseTest {
 
-    private static final String JWT_SECRET = "12345678901234567890123456789012";
-    private static final long JWT_TTL = 604800000L;
-    private static final long USER_ID = 1L;
+    private static final String USER_EMAIL = "test@example.com";
+    private static final String USER_PASSWORD = "123456";
     private static final String SCOOTER_CODE = "PDSC000001";
+    private static String userToken;
     private static final String RESET = "\u001B[0m";
     private static final String GREEN = "\u001B[32m";
     private static final String RED = "\u001B[31m";
@@ -181,9 +180,19 @@ class RideControllerTest extends BaseTest {
     }
 
     private String userToken() {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", USER_ID);
-        return JwtUtil.createJWT(JWT_SECRET, JWT_TTL, claims);
+        if (userToken == null) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("email", USER_EMAIL);
+            body.put("password", USER_PASSWORD);
+            Response response = given()
+                    .spec(requestSpec)
+                    .body(body)
+                    .when()
+                    .post("/user/user/login");
+            Assertions.assertEquals("0", response.jsonPath().getString("code"), "user login failed");
+            userToken = response.jsonPath().getString("data.token");
+        }
+        return userToken;
     }
 
     private void runCase(String caseName, String endpoint, CaseAssertion assertion) {

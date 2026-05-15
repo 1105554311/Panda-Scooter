@@ -1,7 +1,6 @@
 package com.panda.controller.dispatcher;
 
 import com.panda.test.base.BaseTest;
-import com.panda.utils.JwtUtil;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
@@ -20,10 +19,9 @@ import static org.hamcrest.Matchers.notNullValue;
 
 class DispatcherControllerTest extends BaseTest {
 
-    private static final String JWT_SECRET = "12345678901234567890123456789012";
-    private static final long JWT_TTL = 604800000L;
     private static final String ADMIN_EMAIL = "admin@panda.com";
     private static final String ADMIN_PASSWORD = "admin123";
+    private static final String DISPATCHER_PASSWORD = "dispatcher123";
     private static final Long AREA_ID = 1L;
     private static final String DISPATCHER_NAME = "\u5218\u5bb8\u8c6a";
     private static final String SCOOTER_CODE = "PDSC000001";
@@ -35,6 +33,7 @@ class DispatcherControllerTest extends BaseTest {
     private static final String BOLD = "\u001B[1m";
 
     private static String adminToken;
+    private static String dispatcherToken;
     private static DispatcherFixture dispatcherFixture;
     private static final Set<String> TESTED_ENDPOINTS = new LinkedHashSet<>();
     private static final AtomicInteger TOTAL_CASES = new AtomicInteger();
@@ -161,9 +160,20 @@ class DispatcherControllerTest extends BaseTest {
     }
 
     private String dispatcherToken() {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("dispatcherId", dispatcher().id);
-        return JwtUtil.createJWT(JWT_SECRET, JWT_TTL, claims);
+        if (dispatcherToken == null) {
+            DispatcherFixture dispatcher = dispatcher();
+            Map<String, Object> body = new HashMap<>();
+            body.put("email", dispatcher.email);
+            body.put("password", DISPATCHER_PASSWORD);
+            Response response = given()
+                    .spec(requestSpec)
+                    .body(body)
+                    .when()
+                    .post("/dispatcher/user/login");
+            Assertions.assertEquals("0", response.jsonPath().getString("code"), "dispatcher login failed");
+            dispatcherToken = response.jsonPath().getString("data.token");
+        }
+        return dispatcherToken;
     }
 
     private DispatcherFixture dispatcher() {
@@ -188,10 +198,27 @@ class DispatcherControllerTest extends BaseTest {
                     dispatcher.get("name").toString(),
                     dispatcher.get("email").toString()
             );
+            resetDispatcherPassword(dispatcherFixture);
             System.out.printf("[DISPATCHER-TEST] fixture dispatcher id=%d, name=%s, email=%s%n",
                     dispatcherFixture.id, dispatcherFixture.name, dispatcherFixture.email);
         }
         return dispatcherFixture;
+    }
+
+    private void resetDispatcherPassword(DispatcherFixture dispatcher) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("id", dispatcher.id);
+        body.put("name", dispatcher.name);
+        body.put("email", dispatcher.email);
+        body.put("areaId", AREA_ID);
+        body.put("password", DISPATCHER_PASSWORD);
+        Response response = given()
+                .spec(requestSpec)
+                .header("Authorization", "Bearer " + adminToken())
+                .body(body)
+                .when()
+                .post("/admin/dispatchers/editDispatcher");
+        Assertions.assertEquals("0", response.jsonPath().getString("code"), "reset dispatcher password failed");
     }
 
     private String adminToken() {
