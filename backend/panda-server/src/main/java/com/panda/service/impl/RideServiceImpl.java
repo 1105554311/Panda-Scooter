@@ -8,7 +8,6 @@ import com.panda.entity.Scooter;
 import com.panda.entity.UserBill;
 import com.panda.entity.UserWallet;
 import com.panda.exception.BaseException;
-import com.panda.mapper.DispatchRecordMapper;
 import com.panda.mapper.NoParkingAreaMapper;
 import com.panda.mapper.ParkingPointMapper;
 import com.panda.mapper.RentalOrderMapper;
@@ -19,6 +18,7 @@ import com.panda.mapper.UserSubscriptionMapper;
 import com.panda.mapper.UserWalletMapper;
 import com.panda.mqtt.ScooterMqttPublisher;
 import com.panda.mqtt.ScooterOnlineService;
+import com.panda.domain.ride.concurrency.RideConcurrencyService;
 import com.panda.service.RideService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,85 +44,76 @@ public class RideServiceImpl implements RideService {
     private final UserWalletMapper userWalletMapper;
     private final UserBillMapper userBillMapper;
     private final UserSubscriptionMapper userSubscriptionMapper;
-    private final DispatchRecordMapper dispatchRecordMapper;
     private final NoParkingAreaMapper noParkingAreaMapper;
     private final ParkingPointMapper parkingPointMapper;
     private final ScooterMqttPublisher scooterMqttPublisher;
     private final ScooterOnlineService scooterOnlineService;
+    private final RideConcurrencyService rideConcurrencyService;
 
     @Override
     @Transactional
     public Map<String, Object> unlockScooter(String code) {
         Long userId = currentUserId();
-        log.info("开始解锁车辆，userId={}, code={}", userId, code);
-        RentalOrder unpaidOrder = rentalOrderMapper.getUnpaidOrderByUserId(userId);
-        if (unpaidOrder != null) {
-            log.warn("解锁失败，存在未支付订单，userId={}, orderId={}", userId, unpaidOrder.getId());
-            throw new BaseException("存在未支付订单，请先完成支付");
-        }
-        RentalOrder ridingOrder = rentalOrderMapper.getRidingOrderByUserId(userId);
-        if (ridingOrder != null) {
-            log.warn("解锁失败，存在进行中的订单，userId={}, orderId={}", userId, ridingOrder.getId());
-            throw new BaseException("当前已有进行中的订单");
-        }
-
+        return unlockScooterWithConcurrency(userId, code);
+    }
+    private Map<String, Object> unlockScooterWithConcurrency(Long userId, String code) {
         Scooter scooter = scooterMapper.getByCode(code);
         if (scooter == null) {
-            log.warn("解锁失败，车辆不存在，code={}", code);
             throw new BaseException("车辆不存在");
         }
-        if (Integer.valueOf(1).equals(scooter.getFaultStatus())) {
-            log.warn("解锁失败，车辆故障中，code={}, scooterId={}", code, scooter.getId());
-            throw new BaseException("车辆故障中，暂不可用");
-        }
-        if (dispatchRecordMapper.getActiveRecordByScooterId(scooter.getId()) != null) {
-            log.warn("解锁失败，车辆正在调度中，code={}, scooterId={}", code, scooter.getId());
-            throw new BaseException("车辆正在调度中");
-        }
-        if (!scooterOnlineService.isOnline(scooter.getCode())) {
-            log.warn("Unlock scooter rejected because scooter is offline, code={}, scooterId={}", code, scooter.getId());
-            throw new BaseException("车辆离线，暂不可用");
-        }
-        if (!Integer.valueOf(0).equals(scooter.getRideStatus())) {
-            log.warn("解锁失败，车辆状态不可用，code={}, scooterId={}, rideStatus={}", code, scooter.getId(), scooter.getRideStatus());
-            throw new BaseException("车辆当前不可解锁");
-        }
 
-        RentalOrder rentalOrder = new RentalOrder();
-        rentalOrder.setUserId(userId);
-        rentalOrder.setScooterId(scooter.getId());
-        rentalOrder.setStartTime(LocalDateTime.now());
-        rentalOrder.setTotalTime(0);
-        rentalOrder.setOrderStatus(0);
-        rentalOrder.setPayStatus(0);
-        rentalOrder.setAmount(BigDecimal.ZERO);
-        rentalOrder.setTotalKilometer(BigDecimal.ZERO);
-        rentalOrder.setCreateTime(LocalDateTime.now());
-        rentalOrderMapper.insert(rentalOrder);
+        return rideConcurrencyService.withUserScooterLocks(userId, scooter.getId(), () -> {
+            Scooter latestScooter = scooterMapper.getById(scooter.getId());
+            if (latestScooter == null) {
+                throw new BaseException("车辆不存在");
+            }
+            String reserveToken = rideConcurrencyService.prepareUnlockAndReserve(userId, latestScooter);
+            try {
+                RentalOrder rentalOrder = new RentalOrder();
+                rentalOrder.setUserId(userId);
+                rentalOrder.setScooterId(latestScooter.getId());
+                rentalOrder.setStartTime(LocalDateTime.now());
+                rentalOrder.setTotalTime(0);
+                rentalOrder.setOrderStatus(0);
+                rentalOrder.setPayStatus(0);
+                rentalOrder.setAmount(BigDecimal.ZERO);
+                rentalOrder.setTotalKilometer(BigDecimal.ZERO);
+                rentalOrder.setCreateTime(LocalDateTime.now());
+                rentalOrderMapper.insert(rentalOrder);
 
-        scooterMapper.updateRideStatus(scooter.getId(), 1);
-        scooterMqttPublisher.publishUnlock(scooter.getCode(), rentalOrder.getId());
-        log.info("解锁成功，userId={}, scooterId={}, orderId={}", userId, scooter.getId(), rentalOrder.getId());
+                scooterMapper.updateRideStatus(latestScooter.getId(), 1);
+                rideConcurrencyService.markUnlockSuccess(userId, latestScooter, rentalOrder.getId());
+                scooterMqttPublisher.publishUnlock(latestScooter.getCode(), rentalOrder.getId());
+                log.info("Unlock scooter success, userId={}, scooterId={}, orderId={}, reserveToken={}",
+                        userId, latestScooter.getId(), rentalOrder.getId(), reserveToken);
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("orderId", rentalOrder.getId());
-        data.put("scooterId", scooter.getId());
-        return data;
+                Map<String, Object> data = new HashMap<>();
+                data.put("orderId", rentalOrder.getId());
+                data.put("scooterId", latestScooter.getId());
+                return data;
+            } catch (RuntimeException ex) {
+                rideConcurrencyService.releaseUnlockReservation(userId, latestScooter.getId());
+                throw ex;
+            }
+        });
     }
 
     @Override
     @Transactional
     public Map<String, Object> lockScooter(LockScooterDTO lockScooterDTO) {
         Long userId = currentUserId();
-        log.info("开始锁车结算，userId={}, orderId={}", userId, lockScooterDTO.getOrderId());
+        return rideConcurrencyService.withOrderLock(
+                lockScooterDTO.getOrderId(),
+                () -> lockScooterWithOrderLock(userId, lockScooterDTO)
+        );
+    }
+    private Map<String, Object> lockScooterWithOrderLock(Long userId, LockScooterDTO lockScooterDTO) {
         RentalOrder rentalOrder = rentalOrderMapper.getById(lockScooterDTO.getOrderId());
         if (rentalOrder == null || !userId.equals(rentalOrder.getUserId())) {
-            log.warn("锁车失败，订单不存在，userId={}, orderId={}", userId, lockScooterDTO.getOrderId());
             throw new BaseException("订单不存在");
         }
         if (!Integer.valueOf(0).equals(rentalOrder.getOrderStatus())) {
-            log.warn("锁车失败，订单状态不正确，orderId={}", rentalOrder.getId());
-            throw new BaseException("订单不是进行中状态");
+            throw new BaseException("订单不是骑行中状态，请勿重复锁车");
         }
 
         LocalDateTime startTime = lockScooterDTO.getStartTime() == null ? rentalOrder.getStartTime() : lockScooterDTO.getStartTime();
@@ -141,7 +132,6 @@ public class RideServiceImpl implements RideService {
 
         UserWallet userWallet = userWalletMapper.getByUserId(userId);
         if (userWallet == null) {
-            log.warn("锁车失败，钱包不存在，userId={}", userId);
             throw new BaseException("钱包不存在");
         }
 
@@ -151,7 +141,7 @@ public class RideServiceImpl implements RideService {
             saveRideBill(userId, rentalOrder.getId(), BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), balanceAfter, "套餐抵扣");
         } else if (paid) {
             balanceAfter = deductBalance(userId, userWallet.getBalance(), amount);
-            saveRideBill(userId, rentalOrder.getId(), amount.negate(), balanceAfter, "骑行消费");
+            saveRideBill(userId, rentalOrder.getId(), amount.negate(), balanceAfter, "骑行扣费");
         }
 
         rentalOrder.setStartTime(startTime);
@@ -173,10 +163,14 @@ public class RideServiceImpl implements RideService {
                     lockScooterDTO.getLatitude() == null ? scooter.getLatitude() : lockScooterDTO.getLatitude(),
                     lockScooterDTO.getLongitude() == null ? scooter.getLongitude() : lockScooterDTO.getLongitude()
             );
+            rideConcurrencyService.markLockSuccess(userId, scooter.getId());
+            if (paid) {
+                rideConcurrencyService.clearUnpaidOrder(userId);
+            } else {
+                rideConcurrencyService.markUnpaidOrder(userId, rentalOrder.getId());
+            }
             scooterMqttPublisher.publishLock(scooter.getCode(), rentalOrder.getId());
         }
-        log.info("锁车结算完成，orderId={}, totalMinutes={}, amount={}, totalKilometer={}, paid={}, hasActiveSubscription={}",
-                rentalOrder.getId(), totalMinutes, amount, totalKilometer, paid, hasActiveSubscription);
 
         Map<String, Object> data = new HashMap<>();
         data.put("id", rentalOrder.getId());
@@ -186,7 +180,7 @@ public class RideServiceImpl implements RideService {
         data.put("totalTime", totalMinutes + "分钟");
         data.put("totalKilometer", rentalOrder.getTotalKilometer());
         data.put("balanceAfter", balanceAfter);
-        data.put("message", hasActiveSubscription ? "套餐生效中，本次骑行免费" : (paid ? "扣费成功" : "余额不足，订单待支付"));
+        data.put("message", hasActiveSubscription ? "套餐抵扣成功" : (paid ? "支付成功" : "余额不足，已生成待支付订单"));
         return data;
     }
 
@@ -194,15 +188,18 @@ public class RideServiceImpl implements RideService {
     @Transactional
     public Map<String, Object> payUnpaidOrder(PayUnpaidOrderDTO payUnpaidOrderDTO) {
         Long userId = currentUserId();
-        log.info("开始支付未支付订单，userId={}, orderId={}", userId, payUnpaidOrderDTO.getOrderId());
+        return rideConcurrencyService.withUserOrderLocks(
+                userId,
+                payUnpaidOrderDTO.getOrderId(),
+                () -> payUnpaidOrderWithLock(userId, payUnpaidOrderDTO)
+        );
+    }
+    private Map<String, Object> payUnpaidOrderWithLock(Long userId, PayUnpaidOrderDTO payUnpaidOrderDTO) {
         RentalOrder rentalOrder = rentalOrderMapper.getById(payUnpaidOrderDTO.getOrderId());
         if (rentalOrder == null || !userId.equals(rentalOrder.getUserId())) {
-            log.warn("支付未支付订单失败，订单不存在，userId={}, orderId={}", userId, payUnpaidOrderDTO.getOrderId());
             throw new BaseException("订单不存在");
         }
         if (!Integer.valueOf(1).equals(rentalOrder.getOrderStatus()) || !Integer.valueOf(0).equals(rentalOrder.getPayStatus())) {
-            log.warn("支付未支付订单失败，订单状态不正确，orderId={}, orderStatus={}, payStatus={}",
-                    rentalOrder.getId(), rentalOrder.getOrderStatus(), rentalOrder.getPayStatus());
             throw new BaseException("订单不是待支付状态");
         }
 
@@ -210,18 +207,14 @@ public class RideServiceImpl implements RideService {
                 ? rentalOrder.getAmount()
                 : payUnpaidOrderDTO.getAmount().setScale(2, RoundingMode.HALF_UP);
         if (payableAmount.compareTo(rentalOrder.getAmount()) != 0) {
-            log.warn("支付未支付订单失败，支付金额不一致，orderId={}, requestAmount={}, orderAmount={}",
-                    rentalOrder.getId(), payableAmount, rentalOrder.getAmount());
             throw new BaseException("支付金额与订单金额不一致");
         }
 
         UserWallet userWallet = userWalletMapper.getByUserId(userId);
         if (userWallet == null) {
-            log.warn("支付未支付订单失败，钱包不存在，userId={}", userId);
             throw new BaseException("钱包不存在");
         }
         if (userWallet.getBalance().compareTo(payableAmount) < 0) {
-            log.warn("支付未支付订单失败，余额不足，userId={}, balance={}, amount={}", userId, userWallet.getBalance(), payableAmount);
             throw new BaseException("余额不足");
         }
 
@@ -229,8 +222,8 @@ public class RideServiceImpl implements RideService {
         rentalOrder.setOrderStatus(2);
         rentalOrder.setPayStatus(1);
         rentalOrderMapper.updateFinishInfo(rentalOrder);
+        rideConcurrencyService.clearUnpaidOrder(userId);
         saveRideBill(userId, rentalOrder.getId(), payableAmount.negate(), balanceAfter, "补交骑行订单");
-        log.info("支付未支付订单成功，userId={}, orderId={}, amount={}, balanceAfter={}", userId, rentalOrder.getId(), payableAmount, balanceAfter);
 
         Map<String, Object> data = new HashMap<>();
         data.put("orderId", rentalOrder.getId());
@@ -424,7 +417,7 @@ public class RideServiceImpl implements RideService {
     private Long currentUserId() {
         Long userId = BaseContext.getCurrentId();
         if (userId == null) {
-            log.warn("未获取到当前登录用户");
+            log.warn("未获取到用户登录上下文");
             throw new BaseException("用户未登录");
         }
         return userId;

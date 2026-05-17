@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpLogic;
 import com.panda.auth.AuthLoginType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -11,6 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 public class AuthConfiguration {
 
     @Bean("userStpLogic")
+    @Primary
     public StpLogic userStpLogic() {
         return new StpLogic(AuthLoginType.USER);
     }

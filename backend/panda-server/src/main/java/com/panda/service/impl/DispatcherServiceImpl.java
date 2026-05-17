@@ -20,6 +20,7 @@ import com.panda.mapper.ParkingPointMapper;
 import com.panda.mapper.ScooterMapper;
 import com.panda.mqtt.ScooterOnlineService;
 import com.panda.service.DispatcherService;
+import com.panda.domain.ride.concurrency.RideConcurrencyService;
 import com.panda.vo.DispatchHistoryVO;
 import com.panda.vo.DispatcherLoginVO;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +63,7 @@ public class DispatcherServiceImpl implements DispatcherService {
     @Qualifier("dispatcherStpLogic")
     private final StpLogic dispatcherStpLogic;
     private final PasswordEncoder passwordEncoder;
+    private final RideConcurrencyService rideConcurrencyService;
 
     @Override
     @Transactional
@@ -69,7 +71,7 @@ public class DispatcherServiceImpl implements DispatcherService {
         validateVerificationCode(dispatcherRegisterDTO.getEmail(), dispatcherRegisterDTO.getVerificationCode());
         Dispatcher existed = dispatcherMapper.getByEmail(dispatcherRegisterDTO.getEmail());
         if (existed != null) {
-            throw new BaseException("邮箱已注册");
+            throw new BaseException("调度员已存在");
         }
 
         Dispatcher dispatcher = new Dispatcher();
@@ -133,8 +135,8 @@ public class DispatcherServiceImpl implements DispatcherService {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom("1105554311@qq.com");
         message.setTo(email);
-        message.setSubject("Panda Scooter 调度端验证码");
-        message.setText("您的验证码为：" + code + "，" + VERIFICATION_CODE_EXPIRE_MINUTES + "分钟内有效。");
+        message.setSubject("Panda Scooter 调度员验证码");
+        message.setText("Your verification code is " + code + ", valid for " + VERIFICATION_CODE_EXPIRE_MINUTES + " minutes.");
         javaMailSender.send(message);
         stringRedisTemplate.opsForValue().set(buildVerificationCodeKey(email), code, Duration.ofMinutes(VERIFICATION_CODE_EXPIRE_MINUTES));
         return code;
@@ -227,32 +229,36 @@ public class DispatcherServiceImpl implements DispatcherService {
         if (scooter == null) {
             throw new BaseException("车辆不存在");
         }
-        if (Integer.valueOf(1).equals(scooter.getRideStatus())) {
-            throw new BaseException("车辆使用中");
-        }
-        if (dispatchRecordMapper.getActiveRecordByScooterId(scooter.getId()) != null) {
-            throw new BaseException("车辆调度中");
-        }
+        return unlockScooterWithConcurrency(dispatcherId, scooter);
+    }
+    private Map<String, Object> unlockScooterWithConcurrency(Long dispatcherId, Scooter scooter) {
+        return rideConcurrencyService.withDispatcherScooterLocks(dispatcherId, scooter.getId(), () -> {
+            Scooter latestScooter = scooterMapper.getById(scooter.getId());
+            if (latestScooter == null) {
+                throw new BaseException("车辆不存在");
+            }
+            rideConcurrencyService.prepareDispatcherUnlock(dispatcherId, latestScooter);
 
-        scooterMapper.updateStatusAndLocation(
-                scooter.getId(),
-                1,
-                1,
-                scooter.getBattery(),
-                scooter.getLatitude(),
-                scooter.getLongitude()
-        );
+            scooterMapper.updateStatusAndLocation(
+                    latestScooter.getId(),
+                    1,
+                    1,
+                    latestScooter.getBattery(),
+                    latestScooter.getLatitude(),
+                    latestScooter.getLongitude()
+            );
 
-        DispatchRecord record = new DispatchRecord();
-        record.setDispatcherId(dispatcherId);
-        record.setScooterId(scooter.getId());
-        record.setStatus(0);
-        record.setCreateTime(LocalDateTime.now());
-        dispatchRecordMapper.insert(record);
+            DispatchRecord record = new DispatchRecord();
+            record.setDispatcherId(dispatcherId);
+            record.setScooterId(latestScooter.getId());
+            record.setStatus(0);
+            record.setCreateTime(LocalDateTime.now());
+            dispatchRecordMapper.insert(record);
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("scooterId", scooter.getId());
-        return data;
+            Map<String, Object> data = new HashMap<>();
+            data.put("scooterId", latestScooter.getId());
+            return data;
+        });
     }
 
     @Override
@@ -266,7 +272,7 @@ public class DispatcherServiceImpl implements DispatcherService {
 
         DispatchRecord record = dispatchRecordMapper.getActiveRecord(dispatcherId, scooter.getId());
         if (record == null) {
-            throw new BaseException("未找到进行中的调度记录");
+            throw new BaseException("没有正在进行的调度记录");
         }
 
         scooterMapper.updateStatusAndLocation(
@@ -288,7 +294,7 @@ public class DispatcherServiceImpl implements DispatcherService {
     private Long currentDispatcherId() {
         Long dispatcherId = BaseContext.getCurrentId();
         if (dispatcherId == null) {
-            throw new BaseException("未登录");
+            throw new BaseException("调度员未登录");
         }
         return dispatcherId;
     }
@@ -309,7 +315,7 @@ public class DispatcherServiceImpl implements DispatcherService {
     private void validateVerificationCode(String email, String verificationCode) {
         String cacheCode = stringRedisTemplate.opsForValue().get(buildVerificationCodeKey(email));
         if (!StringUtils.hasText(cacheCode)) {
-            throw new BaseException("请先获取验证码");
+            throw new BaseException("验证码已过期");
         }
         if (!cacheCode.equals(verificationCode)) {
             throw new BaseException("验证码错误");
