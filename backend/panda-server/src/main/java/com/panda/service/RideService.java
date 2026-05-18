@@ -2,6 +2,7 @@ package com.panda.service;
 
 import com.panda.dto.LockScooterDTO;
 import com.panda.dto.PayUnpaidOrderDTO;
+import com.panda.dto.WechatPayCallbackDTO;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -13,6 +14,8 @@ public interface RideService {
     Map<String, Object> lockScooter(LockScooterDTO lockScooterDTO);
 
     Map<String, Object> payUnpaidOrder(PayUnpaidOrderDTO payUnpaidOrderDTO);
+
+    Map<String, Object> simulateWechatPayCallback(WechatPayCallbackDTO callbackDTO);
 
     Object getScooterByCode(String code);
 

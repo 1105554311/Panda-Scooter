@@ -3,6 +3,7 @@ package com.panda.service.impl;
 import com.panda.context.BaseContext;
 import com.panda.dto.LockScooterDTO;
 import com.panda.dto.PayUnpaidOrderDTO;
+import com.panda.dto.WechatPayCallbackDTO;
 import com.panda.entity.RentalOrder;
 import com.panda.entity.Scooter;
 import com.panda.entity.UserBill;
@@ -19,6 +20,7 @@ import com.panda.mapper.UserWalletMapper;
 import com.panda.mqtt.ScooterMqttPublisher;
 import com.panda.mqtt.ScooterOnlineService;
 import com.panda.domain.ride.concurrency.RideConcurrencyService;
+import com.panda.domain.ride.order.UnpaidOrderClosePublisher;
 import com.panda.service.RideService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +51,7 @@ public class RideServiceImpl implements RideService {
     private final ScooterMqttPublisher scooterMqttPublisher;
     private final ScooterOnlineService scooterOnlineService;
     private final RideConcurrencyService rideConcurrencyService;
+    private final UnpaidOrderClosePublisher unpaidOrderClosePublisher;
 
     @Override
     @Transactional
@@ -167,7 +170,23 @@ public class RideServiceImpl implements RideService {
             if (paid) {
                 rideConcurrencyService.clearUnpaidOrder(userId);
             } else {
+                /*
+                 * 锁车后支付链路伪代码：
+                 *
+                 * 1. 用户锁车，服务端计算本次骑行金额。
+                 * 2. 如果钱包/套餐可以覆盖费用，直接扣费并把订单置为已支付。
+                 * 3. 如果不能覆盖费用：
+                 *    - 订单置为待支付：orderStatus=1, payStatus=0。
+                 *    - Redis 标记用户存在未支付订单，后续开锁前置校验会拦截。
+                 *    - 投递 RocketMQ 15 分钟延迟关单消息。
+                 *    - 真实接微信支付时，这里会调用微信统一下单接口，生成 prepayId/paySign。
+                 *    - 前端拿 prepayId/paySign 拉起微信支付。
+                 *    - 用户支付成功后，微信异步通知 /payment/wechat/callback。
+                 *    - 回调里再加订单锁，校验金额和订单状态，然后把订单更新为已支付。
+                 * 4. 如果 15 分钟内没有支付，RocketMQ Consumer 会拿同一把订单锁自动关闭订单。
+                 */
                 rideConcurrencyService.markUnpaidOrder(userId, rentalOrder.getId());
+                unpaidOrderClosePublisher.publishDelayCloseMessage(rentalOrder.getId());
             }
             scooterMqttPublisher.publishLock(scooter.getCode(), rentalOrder.getId());
         }
@@ -187,6 +206,18 @@ public class RideServiceImpl implements RideService {
     @Override
     @Transactional
     public Map<String, Object> payUnpaidOrder(PayUnpaidOrderDTO payUnpaidOrderDTO) {
+        /*
+         * 当前方法是用户主动补缴入口，用钱包余额模拟支付。
+         *
+         * 如果接入真实微信支付，这里通常不会直接把订单改成已支付，而是：
+         * 1. 校验订单仍是待支付状态。
+         * 2. 调微信统一下单，生成微信预支付单。
+         * 3. 返回 prepayId/paySign 给前端。
+         * 4. 前端拉起微信支付。
+         * 5. 最终以微信支付回调为准更新订单状态。
+         *
+         * MVP 阶段为了演示业务闭环，保留这个同步补缴接口。
+         */
         Long userId = currentUserId();
         return rideConcurrencyService.withUserOrderLocks(
                 userId,
@@ -230,6 +261,90 @@ public class RideServiceImpl implements RideService {
         data.put("amount", payableAmount);
         data.put("payStatus", rentalOrder.getPayStatus());
         data.put("balanceAfter", balanceAfter);
+        return data;
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> simulateWechatPayCallback(WechatPayCallbackDTO callbackDTO) {
+        /*
+         * callbackDTO 在这里模拟的是“微信回调验签 + resource 解密”之后得到的业务数据。
+         *
+         * 真实流程中不应该直接相信请求体里的 orderId/amount/tradeState，而是应该：
+         * 1. 验证微信支付回调签名。
+         * 2. 解密 resource.ciphertext。
+         * 3. 从解密结果中拿 out_trade_no、transaction_id、trade_state、payer_total。
+         * 4. 用 out_trade_no 查询本地订单，再进入下面的本地支付闭环。
+         */
+        if (callbackDTO.getTradeState() != null && !"SUCCESS".equalsIgnoreCase(callbackDTO.getTradeState())) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("orderId", callbackDTO.getOrderId());
+            data.put("tradeState", callbackDTO.getTradeState());
+            data.put("message", "微信支付回调非成功状态，已忽略");
+            return data;
+        }
+
+        RentalOrder rentalOrder = rentalOrderMapper.getById(callbackDTO.getOrderId());
+        if (rentalOrder == null) {
+            throw new BaseException("订单不存在");
+        }
+
+        return rideConcurrencyService.withUserOrderLocks(
+                rentalOrder.getUserId(),
+                rentalOrder.getId(),
+                () -> handleWechatPayCallbackWithLock(callbackDTO)
+        );
+    }
+
+    private Map<String, Object> handleWechatPayCallbackWithLock(WechatPayCallbackDTO callbackDTO) {
+        RentalOrder rentalOrder = rentalOrderMapper.getById(callbackDTO.getOrderId());
+        if (rentalOrder == null) {
+            throw new BaseException("订单不存在");
+        }
+        if (Integer.valueOf(2).equals(rentalOrder.getOrderStatus()) && Integer.valueOf(1).equals(rentalOrder.getPayStatus())) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("orderId", rentalOrder.getId());
+            data.put("transactionId", callbackDTO.getTransactionId());
+            data.put("idempotent", true);
+            data.put("message", "订单已支付，重复回调直接返回成功");
+            return data;
+        }
+        if (!Integer.valueOf(1).equals(rentalOrder.getOrderStatus()) || !Integer.valueOf(0).equals(rentalOrder.getPayStatus())) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("orderId", rentalOrder.getId());
+            data.put("orderStatus", rentalOrder.getOrderStatus());
+            data.put("payStatus", rentalOrder.getPayStatus());
+            data.put("message", "订单不是待支付状态，回调已忽略");
+            return data;
+        }
+
+        BigDecimal paidAmount = callbackDTO.getAmount().setScale(2, RoundingMode.HALF_UP);
+        if (paidAmount.compareTo(rentalOrder.getAmount()) != 0) {
+            throw new BaseException("微信回调金额与订单金额不一致");
+        }
+
+        UserWallet userWallet = userWalletMapper.getByUserId(rentalOrder.getUserId());
+        if (userWallet == null) {
+            throw new BaseException("钱包不存在");
+        }
+        if (userWallet.getBalance().compareTo(paidAmount) < 0) {
+            throw new BaseException("余额不足");
+        }
+
+        BigDecimal balanceAfter = deductBalance(rentalOrder.getUserId(), userWallet.getBalance(), paidAmount);
+        rentalOrder.setOrderStatus(2);
+        rentalOrder.setPayStatus(1);
+        rentalOrderMapper.updateFinishInfo(rentalOrder);
+        rideConcurrencyService.clearUnpaidOrder(rentalOrder.getUserId());
+        saveRideBill(rentalOrder.getUserId(), rentalOrder.getId(), paidAmount.negate(), balanceAfter, "微信支付回调");
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("orderId", rentalOrder.getId());
+        data.put("transactionId", callbackDTO.getTransactionId());
+        data.put("amount", paidAmount);
+        data.put("payStatus", rentalOrder.getPayStatus());
+        data.put("balanceAfter", balanceAfter);
+        data.put("message", "微信支付回调模拟成功");
         return data;
     }
 

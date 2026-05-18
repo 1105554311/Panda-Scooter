@@ -78,6 +78,16 @@
           and order_status = 0
     </update>
 
+    <update id="closeUnpaidOrder">
+        update rental_order
+        set order_status = 2,
+            pay_status = 0,
+            end_time = ifnull(end_time, #{closeTime})
+        where id = #{id}
+          and order_status = 1
+          and pay_status = 0
+    </update>
+
     <select id="listByUserId" resultMap="rentalOrderResultMap">
         select id, user_id, scooter_id, start_time, end_time, total_time, order_status, pay_status, amount, total_kilometer, create_time
         from rental_order

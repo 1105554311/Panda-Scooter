@@ -17,6 +17,11 @@ springdoc:
   api-docs:
     path: /v3/api-docs
 
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER:127.0.0.1:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:panda-server-producer}
+
 sa-token:
   token-name: Authorization
   token-prefix: Bearer
@@ -51,3 +56,6 @@ panda:
     command-retry-batch-size: ${PANDA_MQTT_COMMAND_RETRY_BATCH_SIZE:50}
     command-max-retry-count: ${PANDA_MQTT_COMMAND_MAX_RETRY_COUNT:3}
     scooter-online-ttl-seconds: ${PANDA_MQTT_SCOOTER_ONLINE_TTL_SECONDS:60}
+  ride:
+    unpaid-order-close-topic: ${PANDA_RIDE_UNPAID_ORDER_CLOSE_TOPIC:panda-ride-unpaid-order-close}
+    unpaid-order-close-consumer-group: ${PANDA_RIDE_UNPAID_ORDER_CLOSE_CONSUMER_GROUP:panda-ride-unpaid-order-close-consumer}
